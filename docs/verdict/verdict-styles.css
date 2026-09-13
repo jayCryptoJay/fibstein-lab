@@ -1,0 +1,63 @@
+/* FibStein Lab — verdict block. Append to frontend/src/styles.css.
+   Self-host Fraunces / Inter / JetBrains Mono rather than using the Google CDN. */
+:root{
+  --sp-red:#ff5f6d;--sp-coral:#ff8f5e;--sp-amber:#ffd166;
+  --sp-mint:#5fe3b0;--sp-cyan:#4cc9f0;--sp-violet:#a78bfa;
+  --editorial:Fraunces,Georgia,serif;
+  --data:"JetBrains Mono",ui-monospace,SFMono-Regular,Consolas,monospace;
+}
+.verdict{position:relative;background:#0e141c;border:1px solid var(--line);border-radius:4px;padding:20px 22px 18px;margin-bottom:16px;overflow:hidden}
+.verdict::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--tone),var(--tone-2,var(--tone)))}
+.verdict-tag{display:flex;align-items:center;gap:9px;font-size:11px;color:var(--muted);margin-bottom:14px}
+.verdict-tag .mark{font:400 13px/1 var(--editorial);color:var(--tone);flex:none}
+.verdict-tag small{font-size:11px;color:#6f7f96;margin-left:auto;font-family:var(--data)}
+.verdict-headline{font:400 21px/1.42 var(--editorial);font-optical-sizing:auto;letter-spacing:-.2px;color:#f2f5fa;margin:0 0 12px;max-width:33ch}
+.verdict-detail{font-size:13px;line-height:1.75;color:#a9b8cd;margin:0;max-width:62ch}
+.verdict b{font:500 .9em var(--data);color:#dfe6f2;font-feature-settings:"tnum";letter-spacing:-.2px}
+.verdict-headline b{color:var(--tone);font-size:.86em}
+.tone-blown{--tone:var(--sp-red);--tone-2:var(--sp-coral)}
+.tone-loss{--tone:var(--sp-coral);--tone-2:var(--sp-red)}
+.tone-thin{--tone:var(--sp-amber);--tone-2:var(--sp-coral)}
+.tone-unproven{--tone:var(--sp-violet);--tone-2:var(--sp-cyan)}
+.tone-holds{--tone:var(--sp-mint);--tone-2:var(--sp-cyan)}
+.tone-empty{--tone:#4d5a6e;--tone-2:#3a4557}
+.cost-rail{margin-top:20px}
+.cost-rail .rail{display:flex;height:7px;border-radius:2px;overflow:hidden;background:#141b25}
+.cost-rail .rail i{display:block;height:100%}
+.rail-kept{background:linear-gradient(90deg,var(--sp-mint),var(--sp-cyan))}
+.rail-loss{background:linear-gradient(90deg,var(--sp-coral),var(--sp-red))}
+.rail-cost{background:repeating-linear-gradient(115deg,#3d4a5d 0 5px,#313b4b 5px 10px)}
+.rail-legend{display:flex;justify-content:space-between;gap:14px;margin-top:12px;font-size:11px;color:var(--muted)}
+.rail-legend b{display:block;margin-top:6px;font:500 13px var(--data);color:#dfe6f2;font-feature-settings:"tnum"}
+/* Numbers everywhere else should move to the brand mono too. */
+.metric-strip strong{font-family:var(--data);letter-spacing:-.5px}
+td,.detail-metrics b,.cost-row b{font-family:var(--data)}
+@media(max-width:740px){
+ .verdict{padding:18px 17px 16px}
+ .verdict-headline{font-size:19px;max-width:none;line-height:1.4}
+ .verdict-detail{font-size:12.5px}
+ .rail-legend{font-size:10px;gap:9px}
+ .rail-legend b{font-size:12px}
+}
+
+/* ---------- first-run screen ---------- */
+.first-run{border:1px solid var(--line);border-radius:4px;background:#0e141c;padding:52px 40px 44px;text-align:center}
+.first-run-mark{
+ font:400 46px/1 var(--editorial);margin:0 0 22px;
+ background:linear-gradient(150deg,var(--sp-red),var(--sp-amber) 32%,var(--sp-mint) 62%,var(--sp-violet));
+ -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.first-run h2{font:400 26px/1.34 var(--editorial);letter-spacing:-.3px;color:#f2f5fa;margin:0 auto 14px;max-width:19ch}
+.first-run-sub{font-size:13.5px;line-height:1.75;color:#a9b8cd;margin:0 auto 28px;max-width:54ch}
+.first-run .run-button{font-size:14px;padding:13px 22px}
+.first-run-note{font:400 11px var(--data);color:#6f7f96;margin:14px 0 0}
+.first-run-claims{display:grid;grid-template-columns:repeat(3,1fr);gap:26px;margin:44px 0 0;padding-top:30px;border-top:1px solid var(--line);text-align:left}
+.first-run-claims dt{font-size:12.5px;color:#dfe6f2;margin-bottom:8px;font-weight:500}
+.first-run-claims dd{font-size:12px;line-height:1.7;color:var(--muted);margin:0}
+@media(max-width:740px){
+ .first-run{padding:38px 20px 32px}
+ .first-run-mark{font-size:38px;margin-bottom:18px}
+ .first-run h2{font-size:21px;max-width:17ch}
+ .first-run-sub{font-size:12.5px;margin-bottom:24px}
+ .first-run-claims{grid-template-columns:1fr;gap:20px;margin-top:34px;padding-top:24px}
+}

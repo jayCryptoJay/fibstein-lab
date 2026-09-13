@@ -1,0 +1,42 @@
+import React,{useState} from 'react';
+import {ChevronDown,Save,Upload} from 'lucide-react';
+import {api,downloadJSON} from '../api';
+
+export function Field({label,name,c,set,unit,type='number',options,step='any',hint}){
+ return <label className="field"><span>{label}</span><div className="input-wrap">{options?<select aria-label={label} value={c[name]} onChange={e=>set(name,typeof options[0][0]==='number'?Number(e.target.value):e.target.value)}>{options.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>:<input aria-label={label} type={type} step={step} value={c[name]??''} onChange={e=>set(name,type==='number'?(e.target.value===''?'':Number(e.target.value)):e.target.value)}/>} {unit&&<small>{unit}</small>}</div>{hint&&<small className="hint">{hint}</small>}</label>
+}
+const fields={
+ 'Execution costs':[['Maker fee','maker_bps','bps'],['Taker fee','taker_bps','bps'],['Slippage per side','slippage_bps','bps'],['Full spread','spread_bps','bps'],['Cost stress multiplier','stress_multiplier','×']],
+ 'Risk & exits':[['ATR stop multiple','stop_atr','×'],['Target / risk','reward_risk','R'],['Maximum hold','max_hold_hours','hours'],['Trailing distance · 0 = off','trailing_atr','ATR'],['Breakeven trigger · 0 = off','breakeven_r','R'],['Maximum positions','max_positions'],['Maximum exposure','max_exposure_pct','% equity'],['Maximum margin','max_margin_pct','% equity'],['Maximum open risk','max_open_risk_pct','% equity'],['Fixed notional · risk-capped','fixed_notional','USDT']],
+ 'Strategy parameters':[['Fast EMA','ema_fast'],['Slow EMA','ema_slow'],['Higher-timeframe EMA','htf_ema'],['ATR length','atr_length'],['RSI length','rsi_length'],['Breakout lookback','breakout_lookback'],['Retest expiry','retest_bars','bars'],['Retest tolerance','retest_atr','ATR'],['VWAP band','vwap_band_atr','ATR'],['Range EMA separation','range_threshold','ATR'],['RSI oversold','rsi_oversold'],['RSI overbought','rsi_overbought']],
+ 'Funding & liquidation':[['Estimated funding rate','funding_bps','bps'],['Funding interval / gap check','funding_interval_hours','hours'],['Maintenance margin assumption','maintenance_margin_pct','%'],['Liquidation fee assumption','liquidation_fee_bps','bps']],
+ 'Order & liquidity assumptions':[['Limit offset','limit_offset_bps','bps'],['Required limit penetration','limit_penetration_bps','bps'],['Entry order expiry','limit_expiry_bars','signal bars'],['Prior-bar volume cap','participation_pct','%']],
+};
+export default function Settings({c,set,meta,onConfig,onError,presets,refreshPresets}){
+ const [name,setName]=useState('My strategy'),[custom,setCustom]=useState(''),[rules,setRules]=useState('');
+ const field=(label,key,options)=> <Field key={key} label={label} name={key} options={options} c={c} set={set}/>;
+ async function save(){try{await api('/presets',{name,config:c});await refreshPresets();}catch(e){onError(e.message)}}
+ async function importPreset(e){try{const f=e.target.files[0];if(f){const parsed=JSON.parse(await f.text());onConfig(await api('/validate',parsed.config||parsed));}}catch(err){onError(err.message)}e.target.value='';}
+ return <aside className="settings"><h2>Settings</h2>
+  <label className="field"><span>Market</span><select aria-label="Market" value={c.pairs[0]} onChange={e=>set('pairs',[e.target.value,...c.pairs.slice(1).filter(x=>x!==e.target.value)])}>{[...new Set([...meta.pairs,...c.pairs])].map(p=><option key={p} value={p}>{p.replace('USDT',' / USDT')}</option>)}</select></label>
+  <div className="quick-pairs">{['SOLUSDT','BTCUSDT','ETHUSDT'].map(p=><button key={p} onClick={()=>set('pairs',[p])}>{p.slice(0,-4)}</button>)}<details><summary>+6</summary><div className="pair-pop">{meta.pairs.slice(4).map(p=><button key={p} onClick={()=>set('pairs',[p])}>{p.slice(0,-4)}</button>)}</div></details></div>
+  {field('Strategy','strategy',Object.entries(meta.strategies).map(([k,v])=>[k,v.name]))}
+  {field('Signal timeframe','timeframe',[[5,'5m'],[15,'15m'],[30,'30m'],[60,'1h']])}
+  <div className="two-col"><Field label="Start date" name="start" type="date" c={c} set={set}/><Field label="End · exclusive" name="end" type="date" c={c} set={set}/></div>
+  <Field label="Starting balance" name="balance" unit="USDT" c={c} set={set}/>
+  <Field label="Risk per trade" name="risk_pct" unit="%" c={c} set={set}/>
+  <Field label="Leverage" name="leverage" unit="×" c={c} set={set}/>
+  {Object.entries(fields).map(([title,items])=><details className="settings-section" key={title}><summary><ChevronDown size={15}/>{title}</summary><div className="section-fields">
+    {title==='Risk & exits'&&<>{field('Direction','direction',[['both','Long & short'],['long','Long only'],['short','Short only']])}{field('Sizing','sizing',[['risk','Account risk'],['fixed_notional','Fixed notional · risk-capped']])}{field('Margin model','margin_mode',[['isolated','Isolated · approximate'],['cross','Cross · stress approximation']])}</>}
+    {title==='Strategy parameters'&&field('Higher-timeframe filter','htf_filter',[['off','Off'],['1h','1h'],['4h','4h'],['both','1h + 4h']])}
+    {title==='Funding & liquidation'&&field('Funding mode','funding_mode',[['historical','Historical · required'],['estimate','Estimated · explicit assumption'],['off','Excluded · incomplete costs']])}
+    {title==='Order & liquidity assumptions'&&<>{field('Execution resolution','execution_minutes',[[1,'1m · preferred'],[5,'5m · coarser approximation']])}{field('Entry order','entry_order',[['market','Market'],['limit','Post-only limit']])}{field('Target order','target_order',[['market','Market on trigger'],['limit','Resting limit']])}</>}
+    {items.map(([label,key,unit])=><Field key={key} label={label} name={key} unit={unit} c={c} set={set}/>)}
+    {title==='Execution costs'&&<p className="hint">1 bp = 0.01%. Defaults are assumptions, not a verified exchange fee tier. Half the spread is charged per market fill.</p>}
+    {title==='Funding & liquidation'&&<p className="hint">Liquidations use trade-price proxies and fixed maintenance assumptions, not historical mark-price tiers.</p>}
+  </div></details>)}
+  <details className="settings-section"><summary><ChevronDown size={15}/>Portfolio markets · {c.pairs.length}</summary><div className="section-fields"><p className="hint">Shared equity. Order below is the priority for simultaneous signals.</p>{[...new Set([...meta.pairs,...c.pairs])].map(p=><label className="check" key={p}><input type="checkbox" checked={c.pairs.includes(p)} onChange={e=>set('pairs',e.target.checked?[...c.pairs,p]:c.pairs.filter(x=>x!==p).length?c.pairs.filter(x=>x!==p):[p])}/>{p.replace('USDT',' / USDT')}</label>)}<button onClick={()=>set('pairs',meta.pairs)}>Select all 10</button><label className="field"><span>Add a USDT pair</span><input value={custom} onChange={e=>setCustom(e.target.value.toUpperCase())} placeholder="BNBUSDT"/></label><button onClick={()=>{if(/^[A-Z0-9]{2,20}USDT$/.test(custom)){set('pairs',[...new Set([...c.pairs,custom])]);setCustom('')}else onError('Enter a USDT symbol such as BNBUSDT.')}}>Add pair</button></div></details>
+  <details className="settings-section"><summary><ChevronDown size={15}/>Contract rules</summary><div className="section-fields"><p className="hint">Optional JSON overrides per pair: tick_size, qty_step, min_qty, min_notional, maintenance_margin_pct. Without overrides, generic assumptions are disclosed.</p><textarea aria-label="Contract rules JSON" rows={7} value={rules||JSON.stringify(c.rules,null,2)} onChange={e=>setRules(e.target.value)}/><button onClick={()=>{try{set('rules',JSON.parse(rules||'{}'));setRules('')}catch(e){onError('Invalid contract rules JSON.')}}}>Apply rules</button></div></details>
+  <div className="preset-area"><label className="field"><span>Preset name</span><input aria-label="Preset name" value={name} onChange={e=>setName(e.target.value)}/></label><div className="two-col"><button className="primary" onClick={save}><Save size={14}/>Save preset</button><label className="button"><Upload size={14}/>Import<input type="file" accept=".json" hidden onChange={importPreset}/></label></div>{presets.length>0&&<select aria-label="Saved presets" defaultValue="" onChange={e=>{const p=presets.find(p=>p.name===e.target.value);if(p){onConfig(p.config);setName(p.name)}}}><option value="" disabled>Load a saved preset</option>{presets.map(p=><option key={p.name}>{p.name}</option>)}</select>}<button className="text-button" onClick={()=>downloadJSON(c,'fibstein-settings.json')}>Export settings JSON</button></div>
+ </aside>
+}

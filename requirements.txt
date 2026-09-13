@@ -1,0 +1,6 @@
+pandas==2.2.3
+numpy==2.3.5
+pydantic==2.13.5
+fastapi==0.141.1
+uvicorn==0.52.4
+ccxt==4.5.78

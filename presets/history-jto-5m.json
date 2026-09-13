@@ -1,0 +1,1 @@
+{"pairs":["JTOUSDT"],"start":"2024-01-15","end":"2025-01-01","source":"binance_archive","strategy":"trend_pullback","timeframe":5,"execution_minutes":1,"balance":1000,"leverage":5,"risk_pct":0.5,"funding_mode":"historical"}

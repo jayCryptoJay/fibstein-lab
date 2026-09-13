@@ -1,0 +1,11 @@
+.venv/
+frontend/node_modules/
+workspace/
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# Candle and funding caches are regenerated on demand from the public archive
+# with checksum verification. ~200MB across 2000+ files — never commit them.
+data/
+!data/.gitkeep

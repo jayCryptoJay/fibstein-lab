@@ -1,0 +1,1 @@
+{"name":"fibstein-lab-ui","private":true,"version":"1.0.0","type":"module","scripts":{"dev":"vite --host 0.0.0.0","build":"vite build"},"dependencies":{"react":"^19.1.1","react-dom":"^19.1.1","recharts":"^3.2.0","lucide-react":"^0.544.0"},"devDependencies":{"vite":"^7.1.5"}}
