@@ -2,6 +2,8 @@ import React,{useState} from 'react';
 import {ResponsiveContainer,AreaChart,Area,LineChart,Line,XAxis,YAxis,CartesianGrid,Tooltip,ReferenceDot} from 'recharts';
 import {ChartNoAxesCombined,Download,ChevronLeft,ChevronRight} from 'lucide-react';
 import {fmt,when} from '../api';
+import Verdict from './Verdict';
+import FirstRun from './FirstRun';
 
 function Plot({data,field,color='#65d6b4'}){return <ResponsiveContainer width="100%" height={310}><AreaChart data={data} margin={{top:25,right:25,left:8,bottom:12}}><defs><linearGradient id={'fill-'+field} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity={.17}/><stop offset="100%" stopColor={color} stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#202735" vertical={false}/><XAxis dataKey="timestamp" type="number" domain={['dataMin','dataMax']} tickFormatter={t=>new Date(t).toISOString().slice(5,10)} minTickGap={50} stroke="#6c7c92" fontSize={11}/><YAxis domain={['auto','auto']} tickFormatter={v=>fmt(v,0)} stroke="#6c7c92" fontSize={11} width={62}/><Tooltip contentStyle={{background:'#11151d',border:'1px solid #303c4d',borderRadius:5}} labelFormatter={when} formatter={v=>fmt(v)}/><Area type="linear" dataKey={field} stroke={color} strokeWidth={1.6} fill={`url(#fill-${field})`} isAnimationActive={false}/></AreaChart></ResponsiveContainer>}
 export default function Results({result,onSample}){
@@ -9,7 +11,9 @@ export default function Results({result,onSample}){
  const m=result?.metrics; const trades=(result?.trades||[]).filter(t=>pair==='all'||t.pair===pair); const pageCount=Math.max(1,Math.ceil(trades.length/20));
  const selectedPair=pair==='all'?result?.config?.pairs[0]:pair;
  const visiblePage=Math.min(page,pageCount-1);
+ if(!result) return <FirstRun onSample={onSample}/>;
  return <>
+ <Verdict v={result.verdict}/>
  <div className="metric-strip">{[['Net return',m?fmt(m.net_return_pct)+'%':'—',m?.net_pnl],['Max drawdown',m?fmt(m.max_drawdown_pct)+'%':'—'],['Net expectancy',m?fmt(m.expectancy)+' USDT':'—',m?.expectancy]].map(([label,value,sign])=><div key={label}><span>{label}</span><strong className={sign===undefined?'':sign>=0?'positive':'negative'}>{value}</strong></div>)}</div>
  <section className="panel chart-panel"><div className="panel-title"><h2>{chart==='drawdown'?'Drawdown':'Equity curve'}</h2><div className="tabs">{['equity','drawdown'].map(v=><button key={v} className={chart===v?'selected':''} onClick={()=>setChart(v)}>{v[0].toUpperCase()+v.slice(1)}</button>)}</div></div>{result?.equity?<Plot data={result.equity} field={chart==='equity'?'equity':'drawdown_pct'} color={chart==='equity'?'#65d6b4':'#b397ef'}/>:<div className="empty-chart"><ChartNoAxesCombined size={66} strokeWidth={1}/><h3>Your next idea starts here.</h3><p>Choose a market and strategy, then run a backtest.</p><button className="text-button" onClick={onSample}>Use bundled January 2025 data</button></div>}</section>
  <section className="panel execution"><div className="panel-title"><h2>Execution model</h2></div><div className="model-row"><span>Next-bar fills</span><span>Costs included</span><span>Conservative intrabar ordering</span></div></section>
