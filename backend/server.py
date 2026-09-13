@@ -12,6 +12,7 @@ from .config import Config,PAIRS,STRATEGIES
 from .data import ROOT,inventory,download_archive,download_ccxt,import_csv,utc
 from .engine import run_backtest
 from .experiments import experiment
+from .verdict import read as read_verdict
 
 STATE=ROOT/'workspace'; STATE.mkdir(exist_ok=True)
 RESULTS=STATE/'runs'; RESULTS.mkdir(exist_ok=True)
@@ -42,6 +43,11 @@ async def local_write_guard(request:Request,call_next):
 def persist_result(result,kind):
     rid=uuid.uuid4().hex[:16]; created=datetime.now(timezone.utc).isoformat()
     result.update({'id':rid,'created':created,'kind':kind,'engine_version':'1.0.0'})
+    # Single chokepoint: every mode that reports headline metrics gets a plain-language reading.
+    if result.get('metrics'):
+        held_out=kind in ('walkforward','grid')
+        result['verdict']=read_verdict(result['metrics'],out_of_sample=held_out,
+                                       folds=len(result.get('folds',[])) or None)
     source=b''.join((ROOT/'backend'/x).read_bytes() for x in ['engine.py','strategies.py','config.py','data.py','experiments.py'])
     if (ROOT/'custom_strategies.py').exists(): source+=(ROOT/'custom_strategies.py').read_bytes()
     digest=hashlib.sha256(source).hexdigest()
