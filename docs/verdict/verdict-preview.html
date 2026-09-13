@@ -1,0 +1,227 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FibStein Lab — the verdict</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* FibStein prismatic spectrum — used here as the confidence scale, not decoration */
+  --sp-red:#ff5f6d; --sp-coral:#ff8f5e; --sp-amber:#ffd166;
+  --sp-mint:#5fe3b0; --sp-cyan:#4cc9f0; --sp-violet:#a78bfa;
+
+  --ground:#0b0d12; --surface:#0e141c; --line:#25303e;
+  --ink:#f2f5fa; --muted:#9badc5; --dim:#6f7f96;
+
+  --ui:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --editorial:Fraunces,Georgia,serif;
+  --data:"JetBrains Mono",ui-monospace,SFMono-Regular,Consolas,monospace;
+
+  font-family:var(--ui);color:var(--ink);background:var(--ground);color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px 16px 72px}
+.wrap{max-width:800px;margin:0 auto}
+
+.masthead{display:flex;align-items:baseline;gap:11px;margin-bottom:4px}
+.phi{
+  font:400 27px/1 var(--editorial);
+  background:linear-gradient(150deg,var(--sp-red),var(--sp-amber) 32%,var(--sp-mint) 62%,var(--sp-violet));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.wordmark{font:500 17px/1 var(--ui);letter-spacing:1.6px}
+.wordmark em{font-style:normal;color:var(--dim);font-weight:400}
+h1{font:400 30px/1.18 var(--editorial);font-optical-sizing:auto;letter-spacing:-.4px;margin:22px 0 0}
+.sub{color:var(--muted);font-size:13px;line-height:1.68;margin:11px 0 32px;max-width:58ch}
+.case{color:var(--dim);font-size:11px;margin:36px 0 11px;border-top:1px solid var(--line);padding-top:15px}
+
+/* ---------- verdict ---------- */
+.verdict{
+  position:relative;background:var(--surface);border:1px solid var(--line);
+  border-radius:4px;padding:20px 22px 18px;margin-bottom:16px;overflow:hidden;
+}
+/* the rail is a slice of the spectrum at this run's position on it */
+.verdict::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:linear-gradient(180deg,var(--tone),var(--tone-2,var(--tone)));
+}
+.verdict-tag{display:flex;align-items:center;gap:9px;font-size:11px;color:var(--muted);margin-bottom:14px}
+.verdict-tag .mark{font:400 13px/1 var(--editorial);color:var(--tone);flex:none}
+.verdict-tag small{font-size:11px;color:var(--dim);margin-left:auto;font-family:var(--data)}
+.verdict-headline{
+  font:400 21px/1.42 var(--editorial);font-optical-sizing:auto;
+  letter-spacing:-.2px;color:var(--ink);margin:0 0 12px;max-width:33ch;
+}
+.verdict-detail{font-size:13px;line-height:1.75;color:#a9b8cd;margin:0;max-width:62ch}
+.verdict b{
+  font:500 .9em var(--data);color:#dfe6f2;
+  font-feature-settings:"tnum";letter-spacing:-.2px;
+}
+.verdict-headline b{color:var(--tone);font-size:.86em}
+
+.tone-blown{--tone:var(--sp-red);--tone-2:var(--sp-coral)}
+.tone-loss{--tone:var(--sp-coral);--tone-2:var(--sp-red)}
+.tone-thin{--tone:var(--sp-amber);--tone-2:var(--sp-coral)}
+.tone-unproven{--tone:var(--sp-violet);--tone-2:var(--sp-cyan)}
+.tone-holds{--tone:var(--sp-mint);--tone-2:var(--sp-cyan)}
+.tone-empty{--tone:#4d5a6e;--tone-2:#3a4557}
+
+/* ---------- cost rail ---------- */
+.cost-rail{margin-top:20px}
+.rail{display:flex;height:7px;border-radius:2px;overflow:hidden;background:#141b25}
+.rail i{display:block;height:100%}
+.rail-kept{background:linear-gradient(90deg,var(--sp-mint),var(--sp-cyan))}
+.rail-loss{background:linear-gradient(90deg,var(--sp-coral),var(--sp-red))}
+.rail-cost{background:repeating-linear-gradient(115deg,#3d4a5d 0 5px,#313b4b 5px 10px)}
+.rail-legend{display:flex;justify-content:space-between;gap:14px;margin-top:12px;font-size:11px;color:var(--muted)}
+.rail-legend b{display:block;margin-top:6px;font:500 13px var(--data);color:#dfe6f2;font-feature-settings:"tnum"}
+
+.text-button{border:0;padding:14px 0 0;background:none;color:#b7a2ef;font:400 12px var(--ui);cursor:pointer}
+.text-button:hover{color:#d3c5ff;text-decoration:underline}
+
+/* ---------- demoted metric strip ---------- */
+.metric-strip{border:1px solid var(--line);border-radius:4px;display:grid;grid-template-columns:repeat(3,1fr);background:var(--surface);padding:15px 0;margin-bottom:14px}
+.metric-strip>div{padding:0 18px;min-width:0}
+.metric-strip>div+div{border-left:1px solid var(--line)}
+.metric-strip span{display:block;font-size:12px;color:var(--muted);margin-bottom:10px}
+.metric-strip strong{font:500 22px var(--data);font-feature-settings:"tnum";letter-spacing:-.5px}
+.negative{color:var(--sp-coral)}.positive{color:var(--sp-mint)}
+
+.notes{border:1px solid var(--line);border-radius:4px;background:var(--surface);padding:15px 18px}
+.notes summary{cursor:pointer;font-size:12px;color:#c5b3f2;list-style:none;display:flex;gap:10px;align-items:center}
+.notes summary::-webkit-details-marker{display:none}
+.notes summary::before{content:"";width:5px;height:5px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);flex:none}
+.notes[open] summary::before{transform:rotate(45deg)}
+.notes ul{margin:15px 0 0;padding-left:18px}
+.notes li{font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:7px}
+
+.scale{display:flex;align-items:center;gap:13px;margin-top:32px;font-size:11px;color:var(--dim)}
+.scale .bar{flex:1;height:3px;border-radius:2px;background:linear-gradient(90deg,var(--sp-red),var(--sp-coral) 22%,var(--sp-amber) 42%,var(--sp-violet) 64%,var(--sp-mint))}
+
+@media(max-width:520px){
+  .verdict{padding:18px 17px 16px}
+  .verdict-headline{font-size:19px;max-width:none;line-height:1.4}
+  .verdict-detail{font-size:12.5px}
+  .rail-legend{font-size:10px;gap:9px}
+  .rail-legend b{font-size:12px}
+  h1{font-size:25px}
+  .metric-strip>div{padding:0 11px}
+  .metric-strip span{font-size:10px}
+  .metric-strip strong{font-size:16px}
+  .scale span{max-width:9ch;line-height:1.4}
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+<div class="masthead"><span class="phi">φ</span><span class="wordmark">FIBSTEIN <em>LAB</em></span></div>
+<h1>The verdict</h1>
+<p class="sub">First thing on the results page, above the metrics. One sentence answering “did this
+work, and can I trust it” — then where the money went, then everything else. Rail colour is position
+on the spectrum: red through amber to mint is the confidence scale itself.</p>
+
+<p class="case">1 · Costs ate a working signal — the case only this tool shows</p>
+<section class="verdict tone-blown">
+  <div class="verdict-tag"><span class="mark">φ</span>In-sample<small>214 trades</small></div>
+  <h2 class="verdict-headline">The signal was profitable. Execution costs took all of it.</h2>
+  <p class="verdict-detail">Entries and exits earned <b>486.20</b> USDT before costs, then fees,
+  spread, slippage and funding removed <b>512.90</b> USDT. The idea may be sound; it cannot pay for
+  itself at this trade frequency.</p>
+  <div class="cost-rail">
+    <div class="rail"><i class="rail-cost" style="width:100%"></i></div>
+    <div class="rail-legend">
+      <span>Signal <b>486.20</b></span><span>Costs <b>−512.90</b></span><span>You keep <b>−26.70</b></span>
+    </div>
+  </div>
+  <button class="text-button">What these numbers mean</button>
+</section>
+
+<p class="case">2 · Real output from the bundled JTO preset</p>
+<section class="verdict tone-loss">
+  <div class="verdict-tag"><span class="mark">φ</span>In-sample<small>53 trades</small></div>
+  <h2 class="verdict-headline">Lost <b>5.2%</b> over <b>53</b> trades.</h2>
+  <p class="verdict-detail">The strategy was losing before costs, so this is the idea, not the fills.
+  <b>18.43</b> USDT of that was execution cost.</p>
+  <div class="cost-rail">
+    <div class="rail"><i class="rail-loss" style="width:65%"></i><i class="rail-cost" style="width:35%"></i></div>
+    <div class="rail-legend">
+      <span>Signal <b>−33.84</b></span><span>Costs <b>−18.43</b></span><span>Total loss <b>−52.26</b></span>
+    </div>
+  </div>
+  <button class="text-button">What these numbers mean</button>
+</section>
+<div class="metric-strip">
+  <div><span>Net return</span><strong class="negative">−5.23%</strong></div>
+  <div><span>Max drawdown</span><strong>7.43%</strong></div>
+  <div><span>Net expectancy</span><strong class="negative">−0.99</strong></div>
+</div>
+
+<p class="case">3 · Won, but on the dates the settings were chosen on</p>
+<section class="verdict tone-unproven">
+  <div class="verdict-tag"><span class="mark">φ</span>In-sample<small>147 trades</small></div>
+  <h2 class="verdict-headline">Made <b>22.4%</b> over <b>147</b> trades, with a <b>9.8%</b> worst drawdown.</h2>
+  <p class="verdict-detail">These are the same dates the settings were chosen on, so the result is
+  not yet evidence. It survives costs up to <b>2.3×</b> today’s. Run a walk-forward to see if it
+  holds on dates it has never seen.</p>
+  <div class="cost-rail">
+    <div class="rail"><i class="rail-kept" style="width:57%"></i><i class="rail-cost" style="width:43%"></i></div>
+    <div class="rail-legend">
+      <span>Signal <b>392.10</b></span><span>Costs <b>−168.40</b></span><span>You keep <b>223.70</b></span>
+    </div>
+  </div>
+  <button class="text-button">What these numbers mean</button>
+</section>
+
+<p class="case">4 · Profitable but fragile</p>
+<section class="verdict tone-thin">
+  <div class="verdict-tag"><span class="mark">φ</span>Held out across 3 folds<small>118 trades</small></div>
+  <h2 class="verdict-headline">Made <b>4.1%</b>, but the edge barely clears its costs.</h2>
+  <p class="verdict-detail">Costs would only need to rise <b>1.2×</b> — a worse fee tier, a thinner
+  book, one bad funding week — to erase the whole result.</p>
+  <div class="cost-rail">
+    <div class="rail"><i class="rail-kept" style="width:17%"></i><i class="rail-cost" style="width:83%"></i></div>
+    <div class="rail-legend">
+      <span>Signal <b>247.30</b></span><span>Costs <b>−206.10</b></span><span>You keep <b>41.20</b></span>
+    </div>
+  </div>
+  <button class="text-button">What these numbers mean</button>
+</section>
+
+<p class="case">5 · The one people screenshot</p>
+<section class="verdict tone-holds">
+  <div class="verdict-tag"><span class="mark">φ</span>Held out across 3 folds<small>163 trades</small></div>
+  <h2 class="verdict-headline">Held up on unseen dates: <b>14.6%</b> over <b>163</b> trades, <b>8.2%</b> worst drawdown.</h2>
+  <p class="verdict-detail">Chosen on training dates and tested on dates it had never seen. It
+  survives costs up to <b>2.8×</b> today’s. Reserve a fresh period before risking money.</p>
+  <div class="cost-rail">
+    <div class="rail"><i class="rail-kept" style="width:64%"></i><i class="rail-cost" style="width:36%"></i></div>
+    <div class="rail-legend">
+      <span>Signal <b>228.40</b></span><span>Costs <b>−82.00</b></span><span>You keep <b>146.40</b></span>
+    </div>
+  </div>
+  <button class="text-button">What these numbers mean</button>
+</section>
+
+<p class="case">6 · Nothing triggered — an empty state that says what to do next</p>
+<section class="verdict tone-empty">
+  <div class="verdict-tag"><span class="mark">φ</span>In-sample<small>0 trades</small></div>
+  <h2 class="verdict-headline">No trades were taken.</h2>
+  <p class="verdict-detail">The rules never triggered in this range. Widen the dates, loosen the
+  higher-timeframe filter, or check the signal diagnostics below.</p>
+</section>
+
+<p class="case">Assumptions, collapsed instead of eight open paragraphs</p>
+<details class="notes">
+  <summary>5 modelling assumptions behind this result</summary>
+  <ul>
+    <li>Liquidation is approximated from trade-price candles and a fixed maintenance rate.</li>
+    <li>Spread and slippage are modelled; OHLCV cannot establish book depth or queue position.</li>
+    <li>Entry size is capped by the previous candle’s volume.</li>
+    <li>Funding uses historical rates, floored to the execution boundary.</li>
+    <li>Drawdown uses candle closes; intra-candle drawdown can be larger.</li>
+  </ul>
+</details>
+
+<div class="scale"><span>costs ate it</span><span class="bar"></span><span>holds out of sample</span></div>
+</div>
