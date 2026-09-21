@@ -9,3 +9,10 @@ __pycache__/
 # with checksum verification. ~200MB across 2000+ files — never commit them.
 data/
 !data/.gitkeep
+
+# The stream key is a live broadcast credential; media and logs are large and
+# machine-local. The runtime install lives in ~/loopstream on the server, but
+# guard the in-repo paths in case someone points LOOPSTREAM_ROOT at a checkout.
+stream/stream.env
+stream/media/
+stream/logs/

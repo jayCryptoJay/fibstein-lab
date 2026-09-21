@@ -1,0 +1,40 @@
+[Unit]
+Description=24/7 loop stream to a live RTMP ingest
+Documentation=https://github.com/jayCryptoJay/fibstein-lab/blob/main/stream/README.md
+# network-online rather than network: the ingest connection is made within
+# seconds of start, and a half-configured interface makes that first attempt
+# fail for no reason.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__ROOT__
+EnvironmentFile=__ROOT__/stream.env
+ExecStart=__ROOT__/bin/stream.sh
+Restart=always
+RestartSec=10
+
+# stream.sh handles stream drops itself; this layer is for the machine dying or
+# the script hitting a config error. A config error exits immediately, hits the
+# default start limit, and the unit stays failed instead of looping forever —
+# `streamctl restart` clears it once the config is fixed.
+
+# Keep ffmpeg from starving sshd on a 2-OCPU box. Losing the stream is
+# recoverable; losing the ability to log in and fix it is not.
+Nice=5
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectControlGroups=yes
+ProtectKernelTunables=yes
+# The media file and stream.env live under the user's home.
+ProtectHome=no
+
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

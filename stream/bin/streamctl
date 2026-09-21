@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# Front end for the loopstream service. Everything here is meant to be typed
+# on a phone keyboard over SSH, so the commands are short and none of them
+# require remembering a path.
+set -euo pipefail
+
+unit=loopstream
+self_dir=$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)
+root=${LOOPSTREAM_ROOT:-$(dirname -- "$self_dir")}
+env_file=${LOOPSTREAM_ENV:-$root/stream.env}
+
+usage() {
+  cat <<USAGE
+usage: streamctl COMMAND
+
+  start | stop | restart   control the stream
+  status                   is it running, what is it streaming
+  logs [N|-f]              last N lines (default 50), or follow
+  key                      paste a new stream key (input is hidden)
+  video SOURCE             build the loop file from SOURCE, then restart
+  check                    validate config and media without streaming
+  enable | disable         start automatically at boot (enabled by default)
+
+config: $env_file
+USAGE
+}
+
+# The journal is readable without sudo for members of adm/systemd-journal;
+# fall back rather than making every log read a sudo prompt.
+journal() {
+  if journalctl -u "$unit" -n 0 >/dev/null 2>&1; then
+    journalctl "$@"
+  else
+    sudo journalctl "$@"
+  fi
+}
+
+env_get() {
+  [[ -r $env_file ]] || return 0
+  sed -n "s/^$1=//p" "$env_file" | tail -1
+}
+
+cmd=${1:-help}
+shift || true
+
+case $cmd in
+  start|stop|restart|enable|disable)
+    sudo systemctl "$cmd" "$unit"
+    [[ $cmd == stop || $cmd == disable ]] || sleep 2
+    systemctl is-active --quiet "$unit" && echo "loopstream: active" || echo "loopstream: not active"
+    ;;
+
+  status)
+    key=$(env_get STREAM_KEY)
+    if [[ -n $key ]]; then
+      echo "stream key: set, ends ...${key: -4}"
+    else
+      echo "stream key: NOT SET — run: streamctl key"
+    fi
+    echo "video:      $(env_get VIDEO)"
+    echo "mode:       $(env_get MODE)"
+    echo "ingest:     $(env_get INGEST_URL)"
+    echo
+    systemctl status --no-pager --lines=10 "$unit" || true
+    ;;
+
+  logs)
+    arg=${1:-50}
+    if [[ $arg == -f ]]; then
+      journal -u "$unit" -n 50 -f
+    else
+      journal -u "$unit" -n "$arg" --no-pager
+    fi
+    ;;
+
+  key)
+    [[ -f $env_file ]] || { echo "streamctl: $env_file not found. Run bootstrap.sh first." >&2; exit 1; }
+    # Read it rather than taking it as an argument: an argument would land in
+    # the shell history and in the process list.
+    read -rsp 'Paste the YouTube stream key (hidden), then Enter: ' key
+    echo
+    key=${key//[[:space:]]/}
+    if [[ ! $key =~ ^[A-Za-z0-9_-]{8,}$ ]]; then
+      echo "streamctl: that does not look like a stream key (letters, digits and dashes)." >&2
+      exit 1
+    fi
+    # Alongside the target, so the rename is atomic and the key never lands in
+    # a world-writable directory even briefly.
+    tmp=$(mktemp -- "$env_file.XXXXXX")
+    chmod 600 -- "$tmp"
+    grep -v '^STREAM_KEY=' "$env_file" > "$tmp" || true
+    printf 'STREAM_KEY=%s\n' "$key" >> "$tmp"
+    mv -- "$tmp" "$env_file"
+    chmod 600 "$env_file"
+    echo "streamctl: key saved, ends ...${key: -4}"
+    if systemctl is-active --quiet "$unit"; then
+      sudo systemctl restart "$unit"
+      echo "streamctl: restarted with the new key"
+    fi
+    ;;
+
+  video)
+    src=${1:-}
+    [[ -n $src ]] || { echo "usage: streamctl video SOURCE" >&2; exit 2; }
+    was_active=0
+    systemctl is-active --quiet "$unit" && was_active=1
+    # Rewriting the file under a running ffmpeg gives a corrupt read, not an error.
+    ((was_active)) && sudo systemctl stop "$unit"
+    "$self_dir/prepare-video.sh" "$src"
+    ((was_active)) && sudo systemctl start "$unit"
+    ;;
+
+  check)
+    "$self_dir/stream.sh" --check
+    ;;
+
+  help|-h|--help)
+    usage
+    ;;
+
+  *)
+    echo "streamctl: unknown command '$cmd'" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
