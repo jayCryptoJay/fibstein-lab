@@ -1,0 +1,330 @@
+diff --git a/scripts/start-browser.mjs b/scripts/start-browser.mjs
+new file mode 100755
+index 0000000..28cd33a
+--- /dev/null
++++ b/scripts/start-browser.mjs
+@@ -0,0 +1,84 @@
++#!/usr/bin/env node
++// Start Chrome with remote debugging (CDP) for the MCP server to attach to.
++// Chrome 136+ ignores --remote-debugging-port on the default user data dir,
++// so this uses a dedicated dir (chrome-profile-kiara/) seeded once from the
++// profile named in config/flow.config.json. Log in there once; it persists.
++import fs from 'fs';
++import path from 'path';
++import { spawn } from 'child_process';
++import { fileURLToPath } from 'url';
++import { get } from '../src/utils/config.js';
++import { resolveChromePath, resolveProfileSource } from '../src/utils/chrome.js';
++
++const PROJECT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
++const CDP_PORT = get('cdpPort', 9222);
++const CDP_URL = `http://127.0.0.1:${CDP_PORT}/json/version`;
++const DEBUG_DIR = path.join(PROJECT_DIR, 'chrome-profile-kiara');
++const SKIP = new Set(['Cache', 'Code Cache', 'GPUCache', 'DawnCache', 'GrShaderCache', 'ShaderCache', 'CacheStorage', 'ScriptCache', 'Service Worker']);
++
++const log = (m) => console.error(`[${new Date().toISOString()}] INFO  ${m}`);
++const die = (m) => { console.error(`[${new Date().toISOString()}] ERROR ${m}`); process.exit(1); };
++
++async function cdpUp() {
++  try { return (await fetch(CDP_URL)).ok; } catch { return false; }
++}
++
++function seedProfile(source, profileName) {
++  const target = path.join(DEBUG_DIR, profileName);
++  if (fs.existsSync(target)) return;
++  fs.mkdirSync(DEBUG_DIR, { recursive: true });
++  if (!fs.existsSync(source)) {
++    log(`Source profile ${source} not found — starting with an empty profile (log in once in the window).`);
++    return;
++  }
++  log(`Seeding ${target} from ${source} (first run only)`);
++  let skipped = 0;
++  fs.cpSync(source, target, {
++    recursive: true,
++    filter: (src) => {
++      if (SKIP.has(path.basename(src))) return false;
++      try { fs.accessSync(src, fs.constants.R_OK); return true; } catch { skipped++; return false; }
++    },
++  });
++  const localState = path.join(path.dirname(source), 'Local State');
++  if (fs.existsSync(localState)) fs.copyFileSync(localState, path.join(DEBUG_DIR, 'Local State'));
++  if (skipped) log(`Skipped ${skipped} unreadable/locked files`);
++}
++
++if (await cdpUp()) {
++  log(`Chrome already running with CDP on port ${CDP_PORT}`);
++  process.exit(0);
++}
++
++const chromePath = resolveChromePath();
++if (!fs.existsSync(chromePath)) die(`Chrome not found at ${chromePath} — set "chromePath" in config/flow.config.json`);
++
++const profileSource = resolveProfileSource();
++const profileName = path.basename(profileSource);
++seedProfile(profileSource, profileName);
++
++const args = [
++  `--remote-debugging-port=${CDP_PORT}`,
++  `--user-data-dir=${DEBUG_DIR}`,
++  `--profile-directory=${profileName}`,
++  '--no-first-run',
++  '--no-default-browser-check',
++  '--disable-blink-features=AutomationControlled',
++  '--window-size=1920,1080',
++];
++if (get('headless', false)) args.push('--headless=new');
++args.push(get('flowUrl', 'https://labs.google/fx/tools/flow'));
++
++log(`Launching ${chromePath} (profile "${profileName}", CDP port ${CDP_PORT}, headless=${get('headless', false)})`);
++const child = spawn(chromePath, args, { detached: true, stdio: 'ignore' });
++child.on('error', (e) => die(`Failed to launch Chrome: ${e.message}`));
++child.unref();
++
++for (let i = 0; i < 20; i++) {
++  if (await cdpUp()) {
++    log(`Chrome CDP ready on port ${CDP_PORT} (PID ${child.pid})`);
++    process.exit(0);
++  }
++  await new Promise(r => setTimeout(r, 1000));
++}
++die(`Chrome did not open CDP on port ${CDP_PORT} within 20 seconds`);
+diff --git a/scripts/start-browser.sh b/scripts/start-browser.sh
+index 1eae64f..a34f80f 100755
+--- a/scripts/start-browser.sh
++++ b/scripts/start-browser.sh
+@@ -1,58 +1,5 @@
+ #!/usr/bin/env bash
+ set -euo pipefail
+-IFS=$'\n\t'
+-
+-# Start Chrome with configured Google profile and CDP debugging
+-# Edit the variables below to match your setup, then run BEFORE the MCP server
+-
+-CHROME="/opt/google/chrome/chrome"
+-USER_DATA_DIR="$HOME/.config/google-chrome"
+-PROFILE="Profile 3"
+-CDP_PORT=9222
+-
+-log()  { echo "[$(date '+%Y-%m-%dT%H:%M:%S')] INFO  $*" >&2; }
+-warn() { echo "[$(date '+%Y-%m-%dT%H:%M:%S')] WARN  $*" >&2; }
+-die()  { echo "[$(date '+%Y-%m-%dT%H:%M:%S')] ERROR $*" >&2; exit 1; }
+-
+-command -v "$CHROME" >/dev/null 2>&1 || die "Chrome not found at $CHROME"
+-
+-if lsof -i :$CDP_PORT >/dev/null 2>&1; then
+-  warn "CDP port $CDP_PORT already in use — checking if it's our Chrome..."
+-  CURL_RESULT=$(curl -s http://localhost:$CDP_PORT/json/version 2>/dev/null || echo "")
+-  if [[ -n "$CURL_RESULT" ]]; then
+-    log "Chrome already running on CDP port $CDP_PORT"
+-    exit 0
+-  else
+-    warn "Port $CDP_PORT is occupied but not responding to CDP. Attempting to kill..."
+-    fuser -k "${CDP_PORT}/tcp" 2>/dev/null || true
+-    sleep 2
+-  fi
+-fi
+-
+-log "Launching Chrome with profile $PROFILE on CDP port $CDP_PORT"
+-"$CHROME" \
+-  --user-data-dir="$USER_DATA_DIR" \
+-  --profile-directory="$PROFILE" \
+-  --remote-debugging-port="$CDP_PORT" \
+-  --no-first-run \
+-  --no-default-browser-check \
+-  --disable-extensions \
+-  --disable-sync \
+-  --disable-features=ChromeWhatsNewUI \
+-  --disable-background-networking \
+-  --disable-component-update \
+-  --disable-sync-preferences \
+-  &
+-
+-CHROME_PID=$!
+-log "Chrome launched (PID: $CHROME_PID)"
+-
+-for i in $(seq 1 15); do
+-  if curl -s http://localhost:$CDP_PORT/json/version >/dev/null 2>&1; then
+-    log "Chrome CDP ready on port $CDP_PORT"
+-    exit 0
+-  fi
+-  sleep 1
+-done
+-
+-die "Chrome did not start CDP on port $CDP_PORT within 15 seconds"
++# Start Chrome with CDP using the profile in config/flow.config.json.
++# Run BEFORE the MCP server. Logic lives in start-browser.mjs (cross-platform).
++exec node "$(cd "$(dirname "$0")" && pwd)/start-browser.mjs" "$@"
+diff --git a/src/browser/connect.js b/src/browser/connect.js
+index e03f8ce..4f883f6 100644
+--- a/src/browser/connect.js
++++ b/src/browser/connect.js
+@@ -1,11 +1,13 @@
+ import { chromium } from 'playwright';
+ import path from 'path';
++import os from 'os';
+ import fs from 'fs';
+ import { spawn } from 'child_process';
+ import { logger } from '../utils/logger.js';
+ import { get } from '../utils/config.js';
+ import { FlowError, ErrorCodes } from '../utils/errors.js';
+ import { takeScreenshot } from '../utils/screenshots.js';
++import { resolveChromePath, resolveProfileSource } from '../utils/chrome.js';
+ 
+ let browser = null;
+ let context = null;
+@@ -46,7 +48,7 @@ export async function connectToBrowser(options = {}) {
+ }
+ 
+ async function launchNewBrowser(cdpPort, options = {}) {
+-  const chromePath = options.chromePath || '/opt/google/chrome/chrome';
++  const chromePath = options.chromePath || resolveChromePath();
+   const profileDir = options.profileDir || path.resolve(import.meta.dirname, '../../chrome-profile-kiara');
+ 
+   if (!fs.existsSync(chromePath)) {
+@@ -100,10 +102,10 @@ async function launchNewBrowser(cdpPort, options = {}) {
+  * launches Chrome via shell, then connects Playwright via CDP.
+  */
+ export async function launchChromeDirect(options = {}) {
+-  const chromePath = options.chromePath || '/opt/google/chrome/chrome';
++  const chromePath = options.chromePath || resolveChromePath();
+   const cdpPort = options.cdpPort || get('cdpPort', 9222);
+   const headless = options.headless ?? get('headless', false);
+-  const profileSource = options.profileSource || path.resolve(process.env.HOME, '.config/google-chrome/Profile 3');
++  const profileSource = options.profileSource || resolveProfileSource();
+ 
+   if (isConnected && page) {
+     logger.info('Already connected, reusing browser');
+@@ -114,12 +116,13 @@ export async function launchChromeDirect(options = {}) {
+     throw new FlowError(ErrorCodes.PLAYWRIGHT_ERROR, `Chrome not found at ${chromePath}`);
+   }
+ 
+-  const tempDir = `/tmp/chrome-kiara-cdp-${Date.now()}`;
++  const tempDir = path.join(os.tmpdir(), `chrome-kiara-cdp-${Date.now()}`);
++  const profileName = path.basename(profileSource);
+   fs.mkdirSync(tempDir, { recursive: true });
+ 
+-  const localStateSrc = path.resolve(path.dirname(profileSource), '../Local State');
++  const localStateSrc = path.join(path.dirname(profileSource), 'Local State');
+   if (fs.existsSync(profileSource)) {
+-    fs.cpSync(profileSource, path.join(tempDir, 'Profile 3'), { recursive: true });
++    fs.cpSync(profileSource, path.join(tempDir, profileName), { recursive: true });
+   }
+   if (fs.existsSync(localStateSrc)) {
+     fs.cpSync(localStateSrc, path.join(tempDir, 'Local State'));
+@@ -138,7 +141,7 @@ export async function launchChromeDirect(options = {}) {
+   const args = [
+     `--remote-debugging-port=${cdpPort}`,
+     `--user-data-dir=${tempDir}`,
+-    '--profile-directory=Profile 3',
++    `--profile-directory=${profileName}`,
+     '--no-first-run', '--no-default-browser-check',
+     '--disable-blink-features=AutomationControlled',
+     '--window-size=1920,1080',
+diff --git a/src/browser/launch-profile.js b/src/browser/launch-profile.js
+index 99494e4..66afe46 100644
+--- a/src/browser/launch-profile.js
++++ b/src/browser/launch-profile.js
+@@ -4,9 +4,10 @@ import fs from 'fs';
+ import { logger } from '../utils/logger.js';
+ import { get } from '../utils/config.js';
+ import { FlowError, ErrorCodes } from '../utils/errors.js';
++import { resolveChromePath, resolveProfileSource } from '../utils/chrome.js';
+ import { launchChromeDirect, setPage, setContext, setConnected, setBrowser, isBrowserConnected } from './connect.js';
+ 
+-const CHROME_PATH = '/opt/google/chrome/chrome';
++const CHROME_PATH = resolveChromePath();
+ const CDP_PORT = get('cdpPort', 9222);
+ const FLOW_URL = get('flowUrl', 'https://labs.google/fx/fr/tools/flow');
+ 
+@@ -16,12 +17,7 @@ export async function launchKiaraProfile(headless = false) {
+     return { success: true, message: 'Already connected' };
+   }
+ 
+-  const profileSource = path.resolve(process.env.HOME, '.config/google-chrome/Profile 3');
+-
+-  if (!fs.existsSync(profileSource)) {
+-    throw new FlowError(ErrorCodes.CONFIG_ERROR,
+-      `Profile 3 not found at ${profileSource}. Make sure Chrome Profile 3 exists and is configured with your Google account.`);
+-  }
++  const profileSource = resolveProfileSource();
+ 
+   logger.info('Launching Chrome via direct+CDP method (anti-detection)', { profileSource });
+ 
+@@ -39,6 +35,10 @@ export async function launchKiaraProfile(headless = false) {
+     setPage(newPage);
+     return { browser: existing, context: ctx, page: newPage };
+   } catch {
++    if (!fs.existsSync(profileSource)) {
++      throw new FlowError(ErrorCodes.CONFIG_ERROR,
++        `Chrome profile not found at ${profileSource}. Check chromeUserDataDir and chromeProfile in config/flow.config.json.`);
++    }
+     // Launch Chrome directly (not via Playwright) for anti-detection
+     return await launchChromeDirect({
+       chromePath: CHROME_PATH,
+diff --git a/src/utils/chrome.js b/src/utils/chrome.js
+new file mode 100644
+index 0000000..daf7102
+--- /dev/null
++++ b/src/utils/chrome.js
+@@ -0,0 +1,31 @@
++import fs from 'fs';
++import os from 'os';
++import path from 'path';
++import { get } from './config.js';
++
++const CANDIDATES = {
++  linux: ['/opt/google/chrome/chrome', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser'],
++  darwin: ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', path.join(os.homedir(), 'Applications/Google Chrome.app/Contents/MacOS/Google Chrome')],
++  win32: [
++    path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'Google\\Chrome\\Application\\chrome.exe'),
++    path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'Google\\Chrome\\Application\\chrome.exe'),
++    path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe'),
++  ],
++};
++
++export function resolveChromePath() {
++  const configured = get('chromePath');
++  if (configured) return configured;
++  const list = CANDIDATES[process.platform] || CANDIDATES.linux;
++  return list.find(p => fs.existsSync(p)) || list[0];
++}
++
++export function defaultUserDataDir() {
++  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library/Application Support/Google/Chrome');
++  if (process.platform === 'win32') return path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\User Data');
++  return path.join(os.homedir(), '.config/google-chrome');
++}
++
++export function resolveProfileSource() {
++  return path.join(get('chromeUserDataDir', defaultUserDataDir()), get('chromeProfile', 'Profile 3'));
++}
+diff --git a/src/utils/logger.js b/src/utils/logger.js
+index 48f0ecf..f2de960 100644
+--- a/src/utils/logger.js
++++ b/src/utils/logger.js
+@@ -26,13 +26,14 @@ function timestamp() {
+ export const logger = {
+   info(msg, data = {}) {
+     const line = `[${timestamp()}] INFO  ${msg} ${Object.keys(data).length ? JSON.stringify(data) : ''}`;
+-    console.log(line);
++    // stdout carries MCP JSON-RPC; logs must go to stderr
++    console.error(line);
+     getLogStream().write(line + '\n');
+   },
+ 
+   warn(msg, data = {}) {
+     const line = `[${timestamp()}] WARN  ${msg} ${Object.keys(data).length ? JSON.stringify(data) : ''}`;
+-    console.warn(line);
++    console.error(line);
+     getLogStream().write(line + '\n');
+   },
+ 
+@@ -45,7 +46,7 @@ export const logger = {
+   debug(msg, data = {}) {
+     const line = `[${timestamp()}] DEBUG ${msg} ${Object.keys(data).length ? JSON.stringify(data) : ''}`;
+     if (process.env.DEBUG) {
+-      console.debug(line);
++      console.error(line);
+     }
+     getLogStream().write(line + '\n');
+   }
