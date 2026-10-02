@@ -101,7 +101,7 @@ def trials_of(result):
                 key = json.dumps(x['parameters'], sort_keys=True)
                 entry = seen.setdefault(key, {'parameters': x['parameters'], 'training': [], 'selected_in_folds': []})
                 entry['training'].append({'fold': f['fold'], 'score': x['score'], 'eligible': x['eligible'], **summary(x['metrics'])})
-                if x['parameters'] == f['selected']: entry['selected_in_folds'].append(f['fold'])
+                if f.get('selected') is not None and x['parameters'] == f['selected']: entry['selected_in_folds'].append(f['fold'])
         for entry in seen.values():
             yield {**c, **entry['parameters']}['strategy'], entry['parameters'], 'candidate', {'training': entry['training'], 'selected_in_folds': entry['selected_in_folds']}
     elif result.get('metrics'):

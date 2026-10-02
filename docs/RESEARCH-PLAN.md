@@ -9,7 +9,7 @@ the brief; the rest is what running it found and what has been built since.
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Run cards, findings, command line, registry with gates and archive reasons, Library view, look-ahead check, Pine conversion guide | **Built** (2 October 2026). 102 tests. See `RESEARCH-MEMORY.md`, `PINE-CONVERSION.md`. |
-| 2 | Parallel runs, Optuna studies, `strategy_params`, locked holdout, overfitting gates, the two selection fixes | Not started. Needs approval: touches `experiments.py`, `config.py` and `requirements.txt`. |
+| 2 | Parallel runs, Optuna studies, `strategy_params`, locked holdout, overfitting gates, the two selection fixes | Steps 1 and 2 approved. Step 1 implemented for review; step 2 next. Parameters, parallel runs, Optuna and overfitting gates remain unapproved. |
 | 3 | Signal exits, long/short flips, per-signal stop and target prices, TradingView parity harness, optional faster engine | Not started. Needs approval: touches `engine.py`. |
 | 4 | MCP server with a budgeted autonomous loop; XGBoost meta-labeling | Optional. |
 
@@ -193,3 +193,8 @@ adding a dependency.
 [TradingView export plans (third-party)](https://www.backtestbase.com/education/tradingview-export-guide) ·
 [Deflated Sharpe Ratio](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2460551) ·
 [Probability of Backtest Overfitting](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2326253)
+
+Step 1 verification: 10 new standard-library unittest cases pass on Python 3.12,
+including exact-engine synthetic cash folds. Full pytest verification remains
+pending because pinned test/server dependencies are unavailable in this environment.
+No real-market data rerun and no Windows execution were performed.
