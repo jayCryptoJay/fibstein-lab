@@ -194,17 +194,19 @@ def count_trials(db, keys, study=None):
     return db.execute(f'SELECT COUNT(DISTINCT fingerprint) FROM trials WHERE strategy IN ({marks})', keys).fetchone()[0]
 
 
-def evidence(db, key, run=None):
-    """The held-out study a status decision rests on: the latest one, never the best one."""
-    if run: row = db.execute('SELECT * FROM studies WHERE id=? AND strategy=?', (run, key)).fetchone()
-    else: row = db.execute('SELECT * FROM studies WHERE strategy=? AND held_out=1 ORDER BY created DESC LIMIT 1', (key,)).fetchone()
+def evidence(db, key):
+    """The held-out study a status decision rests on: the latest one, never the best one.
+
+    There is deliberately no way to name a run. Choosing which walk-forward counts is selection.
+    """
+    row = db.execute('SELECT * FROM studies WHERE strategy=? AND held_out=1 ORDER BY created DESC LIMIT 1', (key,)).fetchone()
     if not row: return None
     return {**dict(row), 'metrics': json.loads(row['metrics']), 'config': json.loads(row['config'])}
 
 
-def gates(db, key, run=None, current_engine=None):
+def gates(db, key, current_engine=None):
     """Objective checks for moving up a status. Each is pass, fail, or pending (cannot be evaluated yet)."""
-    require(db, key); e = evidence(db, key, run); out = []
+    require(db, key); e = evidence(db, key); out = []
     def gate(gid, needed_for, status, detail, value=None, threshold=None):
         out.append({'id': gid, 'needed_for': needed_for, 'status': status, 'detail': detail, 'value': value, 'threshold': threshold})
     if not e or not e['held_out'] or not e['metrics']:
@@ -228,9 +230,9 @@ def gates(db, key, run=None, current_engine=None):
             'promotion_ready': all(g['status'] == 'pass' for g in out)}
 
 
-def promote(db, key, run=None, current_engine=None):
+def promote(db, key, current_engine=None):
     """Move one step up if the gates for that step pass. Never skips a step, never overrides a gate."""
-    row = require(db, key); g = gates(db, key, run, current_engine)
+    row = require(db, key); g = gates(db, key, current_engine)
     if row['status'] == 'archived': raise ValueError(f'{key} is archived ({row["archive_reason"]}). Reopen it first.')
     if row['status'] == 'promoted': raise ValueError(f'{key} is already promoted.')
     target = 'candidate' if row['status'] == 'draft' else 'promoted'

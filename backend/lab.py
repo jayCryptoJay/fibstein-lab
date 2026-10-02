@@ -105,7 +105,7 @@ def print_gates(g):
 
 
 def cmd_gates(a):
-    with registry.session(db_path()) as db: g = registry.gates(db, a.key, a.run and resolve(a.run))
+    with registry.session(db_path()) as db: g = registry.gates(db, a.key)
     show(g) if a.json else print_gates(g)
 
 
@@ -124,7 +124,7 @@ def cmd_strategy(a):
 
 
 def cmd_promote(a):
-    with registry.session(db_path()) as db: row = registry.promote(db, a.key, a.run and resolve(a.run))
+    with registry.session(db_path()) as db: row = registry.promote(db, a.key)
     print(f'{a.key} is now {row["status"]}.')
 
 
@@ -193,8 +193,8 @@ def parser():
     x = add('strategy', cmd_strategy, 'Register a strategy, set its hypothesis, or show it.')
     x.add_argument('action', choices=['add', 'show', 'hypothesis']); x.add_argument('key'); x.add_argument('--name'); x.add_argument('--hypothesis'); x.add_argument('--parent')
     x.add_argument('--origin', default='python', choices=registry.ORIGINS); x.add_argument('--json', action='store_true')
-    x = add('gates', cmd_gates, 'Show the objective checks between a strategy and its next status.'); x.add_argument('key'); x.add_argument('--run'); x.add_argument('--json', action='store_true')
-    x = add('promote', cmd_promote, 'Move a strategy one status up if its gates pass.'); x.add_argument('key'); x.add_argument('--run')
+    x = add('gates', cmd_gates, 'Show the objective checks between a strategy and its next status.'); x.add_argument('key'); x.add_argument('--json', action='store_true')
+    x = add('promote', cmd_promote, 'Move a strategy one status up if its gates pass.'); x.add_argument('key')
     x = add('archive', cmd_archive, 'Archive a strategy with a reason. Its trials are kept.'); x.add_argument('key'); x.add_argument('--reason', required=True, choices=list(registry.ARCHIVE_REASONS)); x.add_argument('--note')
     x = add('reopen', cmd_reopen, 'Return an archived strategy to draft.'); x.add_argument('key'); x.add_argument('--note')
     x = add('note', cmd_note, 'Add a journal note to a strategy.'); x.add_argument('key'); x.add_argument('text')
