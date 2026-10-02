@@ -5,7 +5,7 @@ computed; `run` calls the exact engine and saves through the server's own path.
 """
 import argparse, gzip, json, sqlite3, sys
 from pathlib import Path
-from . import registry, runcard
+from . import registry, runcard, holdout
 from .config import Config
 
 WORKSPACE = registry.ROOT/'workspace'
@@ -82,6 +82,7 @@ def cmd_run(a):
     c = Config.model_validate(settings); progress = lambda message: print(message, file=sys.stderr)
     # Inline JSON, or a file holding it: shells disagree about quoting braces and quotes.
     grid = None if not a.grid else json.loads(a.grid) if a.grid.lstrip().startswith('{') else json.loads(Path(a.grid).read_text())
+    holdout.research_access(c, db_path())
     result = run_backtest(c, progress) if a.mode == 'backtest' else experiment(c, a.mode, grid, a.folds, a.min_trades, progress)
     server.persist_result(result, a.mode)
     k = build_card(result)
@@ -116,7 +117,8 @@ def cmd_strategy(a):
             if not a.hypothesis: raise ValueError('Give the hypothesis text with --hypothesis.')
             row = registry.set_hypothesis(db, a.key, a.hypothesis)
         else: row = registry.require(db, a.key)
-        detail = {**row, 'gates': registry.gates(db, a.key), 'studies': registry.studies(db, a.key, 10), 'journal': registry.journal(db, a.key, 20)}
+        detail = {**row, 'gates': registry.gates(db, a.key), 'versions': registry.versions(db, a.key),
+                  'holdout': registry.holdout_status(db, a.key), 'studies': registry.studies(db, a.key, 10), 'journal': registry.journal(db, a.key, 20)}
     if a.json: return show(detail)
     print(f'{row["key"]} · {row["name"]} · {row["status"]}' + (f' ({row["archive_reason"]})' if row['archive_reason'] else '') + f' · {row["origin"]}' + (f' · child of {row["parent"]}' if row['parent'] else ''))
     print(f'Hypothesis: {row["hypothesis"] or "none recorded"}'); print_gates(detail['gates'])
@@ -176,6 +178,18 @@ def cmd_check(a):
     if not (out['ok'] and out['conclusive']): raise SystemExit(1)
 
 
+def cmd_holdout(a):
+    if a.action == 'lock':
+        if not a.start or not a.end: raise ValueError('Lock requires --start and --end dates.')
+        show(holdout.lock(a.key, a.start, a.end, db_path(), runs_dir()))
+    elif a.action == 'evaluate':
+        from . import server   # Register custom strategies before checking the frozen version.
+        show(holdout.evaluate(a.key, db_path()))
+    else:
+        with registry.session(db_path()) as db:
+            registry.require(db, a.key); show(registry.holdout_status(db, a.key))
+
+
 def parser():
     p = argparse.ArgumentParser(prog='python -m backend.lab', description='FibStein Lab research memory and run cards.')
     s = p.add_subparsers(dest='command', required=True)
@@ -201,6 +215,9 @@ def parser():
     x = add('journal', cmd_journal, 'Print the research journal: hypotheses, outcomes and status history.'); x.add_argument('key', nargs='?'); x.add_argument('--json', action='store_true')
     add('sync', cmd_sync, 'Record any saved runs the registry has not seen.')
     x = add('check', cmd_check, 'Test a registered strategy for look-ahead.'); x.add_argument('key'); x.add_argument('--json', action='store_true')
+    x = add('holdout', cmd_holdout, 'Lock fresh final dates, evaluate once, or show pass/fail and lineage attempts.')
+    x.add_argument('action', choices=['lock', 'evaluate', 'show']); x.add_argument('key', help='Strategy key for lock/show; locked window ID for evaluate.')
+    x.add_argument('--start'); x.add_argument('--end')
     return p
 
 
