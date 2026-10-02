@@ -255,6 +255,7 @@ def findings(result):
 
 def card(result, context=None, defaults=None):
     """Versioned JSON view of one run. `context` comes from the registry; without it those fields are None."""
+    if result.get('kind') == 'holdout': raise ValueError('Final holdout performance cannot be exported as a run card.')
     context = context or {}; c = result['config']; m = result.get('metrics') or None
     verdict = result.get('verdict') or (read_verdict(m, out_of_sample=bool(result.get('folds')), folds=len(result.get('folds', [])) or None) if m else None)
     notes = findings(result)
@@ -266,7 +267,8 @@ def card(result, context=None, defaults=None):
         'schema': SCHEMA,
         'precision': 'Rounded for reading. Exact values are in the full run export.',
         'run': {'id': result.get('id'), 'created': result.get('created'), 'kind': result.get('kind', 'backtest'),
-                'engine_sha256': result.get('engine_sha256'), 'engine_current': context.get('engine_current')},
+                'engine_sha256': result.get('engine_sha256'), 'engine_current': context.get('engine_current'),
+                'strategy_version': context.get('strategy_version') or result.get('strategy_version')},
         'strategy': context.get('strategy') or {'key': c['strategy']},
         'setup': {k: c.get(k) for k in SETUP},
         'changed_from_default': changed if defaults is not None else None,
@@ -279,7 +281,7 @@ def card(result, context=None, defaults=None):
         'selection': context.get('selection'),
         'parent': context.get('parent'),
         # Final-holdout results are exposed as pass or fail only, never as numbers.
-        'holdout': context.get('holdout') or {'status': 'not_configured'},
+        'holdout': {k: v for k, v in (context.get('holdout') or {'status': 'not_configured'}).items() if k in ('status', 'uses')},
         'findings': notes,
         'warnings': list(result.get('warnings') or []),
     }
