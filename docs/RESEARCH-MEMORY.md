@@ -159,3 +159,12 @@ Windows, `.venv/bin/python -m backend.lab ...` elsewhere.
 - A walk-forward result inherits the last fold's "Fewer than 100 trades" warning
   even when the held-out total is above 100. That comes from `experiments.py` and
   is left as it is; the card's `sample_size` finding uses the held-out total.
+
+## Phase 2, step 1: rejected training sets
+
+A fold with no qualifying training candidate has `selected: null`, `status: no_trade`
+and a `no_trade_reason`. Its held-out equity and zero-trade metrics come from the
+exact engine with signals disabled. Every training candidate is still recorded,
+with no selected fold for a skipped window. Run cards expose the skip in both
+splits and findings; cash folds are not parameter winners. Selection requires the
+trade minimum and positive finite net P&L and expectancy R, ranked by expectancy R.

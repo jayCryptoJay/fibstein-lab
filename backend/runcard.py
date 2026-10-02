@@ -85,10 +85,10 @@ def splits(result):
             ranking = f['training_ranking']; eligible = [x for x in ranking if x['eligible']]
             winner = next((x for x in eligible if x['parameters'] == f['selected']), None)
             out.append({'name': f'fold {f["fold"]} training', 'held_out': False, 'start': f['train_start'], 'end': f['train_end'],
-                        'selected': f['selected'], 'candidates': len(ranking), 'eligible': len(eligible),
+                        'selected': f['selected'], 'status': f.get('status', 'selected'), 'no_trade_reason': f.get('no_trade_reason'), 'candidates': len(ranking), 'eligible': len(eligible),
                         'metrics': key_numbers(winner['metrics']) if winner else None})
             out.append({'name': f'fold {f["fold"]} test', 'held_out': True, 'start': f['test_start'], 'end': f['test_end'],
-                        'selected': f['selected'], 'metrics': key_numbers(f['test_metrics'])})
+                        'selected': f['selected'], 'status': f.get('status', 'selected'), 'no_trade_reason': f.get('no_trade_reason'), 'metrics': key_numbers(f['test_metrics'])})
         out.append({'name': 'held-out total', 'held_out': True, 'start': result['folds'][0]['test_start'],
                     'end': result['folds'][-1]['test_end'], 'metrics': key_numbers(result['metrics'])})
     elif result.get('metrics'):
@@ -132,9 +132,13 @@ def findings(result):
                                ranking=[{'settings': x['settings'], **key_numbers(x['metrics'])} for x in ranked]))
         return out
 
+    skipped = [f['fold'] for f in result.get('folds', []) if f.get('selected') is None]
+    if skipped:
+        out.append(finding('no_trade_folds', 'info',
+                           f'{len(skipped)} held-out folds stayed in cash because no training candidate qualified. All candidates remain counted.', folds=skipped))
     if n is None: return out
     if n == 0:
-        return [finding('no_trades', 'problem', 'No trades were taken, so there is nothing to measure.')]
+        return [finding('no_trades', 'problem', 'No trades were taken, so there is nothing to measure.'), *out]
 
     if m.get('liquidations'):
         out.append(finding('liquidations', 'problem', f'{m["liquidations"]} of {n} {where} ended in liquidation.', count=m['liquidations']))
@@ -239,10 +243,11 @@ def findings(result):
             out.append(finding('train_test_decay', severity,
                                f'Selected candidates averaged {train:+.2f}R per trade in training and {test:+.2f}R held out.',
                                training_expectancy_r=r(train, 3), held_out_expectancy_r=r(test, 3)))
-        if len(folds) > 1:
-            chosen = [f['selected'] for f in folds]; same = all(x == chosen[0] for x in chosen)
+        chosen = [f['selected'] for f in folds if f.get('selected') is not None]
+        if len(chosen) > 1:
+            same = all(x == chosen[0] for x in chosen)
             out.append(finding('selection_stability', 'info' if same else 'caution',
-                               'The same parameters won every fold.' if same else 'The selected parameters changed between folds, so the optimum is not stable.',
+                               'The same parameters won every active fold.' if same else 'The selected parameters changed between folds, so the optimum is not stable.',
                                selected=chosen))
 
     return sorted(out, key=lambda f: SEVERITY.index(f['severity']))
