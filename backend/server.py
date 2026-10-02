@@ -13,6 +13,7 @@ from .data import ROOT,inventory,download_archive,download_ccxt,import_csv,utc
 from .engine import run_backtest
 from .experiments import experiment
 from .verdict import read as read_verdict
+from . import registry,runcard
 
 STATE=ROOT/'workspace'; STATE.mkdir(exist_ok=True)
 RESULTS=STATE/'runs'; RESULTS.mkdir(exist_ok=True)
@@ -48,12 +49,12 @@ def persist_result(result,kind):
         held_out=kind in ('walkforward','grid')
         result['verdict']=read_verdict(result['metrics'],out_of_sample=held_out,
                                        folds=len(result.get('folds',[])) or None)
-    source=b''.join((ROOT/'backend'/x).read_bytes() for x in ['engine.py','strategies.py','config.py','data.py','experiments.py'])
-    if (ROOT/'custom_strategies.py').exists(): source+=(ROOT/'custom_strategies.py').read_bytes()
-    digest=hashlib.sha256(source).hexdigest()
-    result['engine_sha256']=digest
+    result['engine_sha256']=registry.engine_fingerprint(ROOT)
     with gzip.open(RESULTS/f'{rid}.json.gz','wt') as f: json.dump(result,f,allow_nan=False)
-    with sqlite3.connect(DB) as db: db.execute('INSERT INTO runs VALUES (?,?,?,?,?)',(rid,created,kind,json.dumps(result['config']),json.dumps(result.get('metrics',{}))))
+    # One transaction: a run is never saved without also being counted as a study and its trials.
+    with registry.session(DB) as db:
+        db.execute('INSERT INTO runs VALUES (?,?,?,?,?)',(rid,created,kind,json.dumps(result['config']),json.dumps(result.get('metrics',{}))))
+        registry.record_run(db,result)
     return rid
 
 def launch(fn):
@@ -148,6 +149,67 @@ def export(rid:str,kind:str):
     if rows:
         w=csv.DictWriter(output,fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
     return Response(output.getvalue(),media_type='text/csv',headers={'Content-Disposition':f'attachment; filename="fibstein-{rid}-{kind}.csv"'})
+
+def card_of(rid):
+    r=read_run(rid)
+    with registry.session(DB) as db:
+        registry.record_run(db,r)  # Runs saved before the registry existed are picked up here.
+        context=registry.context(db,r)
+    return runcard.card(r,context,defaults=Config().model_dump(mode='json'))
+
+@app.get('/api/runs/{rid}/card')
+def run_card(rid:str): return card_of(rid)
+
+@app.get('/api/runs/{rid}/digest')
+def run_digest(rid:str): return Response(runcard.digest(card_of(rid)),media_type='text/plain; charset=utf-8')  # Markdown, served as text so a browser shows it.
+
+def strategy_detail(db,key):
+    return {**registry.require(db,key),'gates':registry.gates(db,key),'studies':registry.studies(db,key,20),'journal':registry.journal(db,key,50)}
+
+@app.get('/api/library')
+def library():
+    with registry.session(DB) as db:
+        return {'strategies':registry.library(db),'reasons':registry.ARCHIVE_REASONS,'origins':registry.ORIGINS,'statuses':registry.STATUSES}
+
+@app.get('/api/library/{key}')
+def strategy(key:str):
+    try:
+        with registry.session(DB) as db: return strategy_detail(db,key)
+    except ValueError as e: raise HTTPException(404,str(e)) from e
+
+class Idea(BaseModel):
+    key:str=Field(pattern=r'^[a-z][a-z0-9_]{1,39}$')
+    name:str|None=Field(None,max_length=80)
+    hypothesis:str=Field('',max_length=2000)
+    parent:str|None=None
+    origin:str='python'
+
+@app.post('/api/library')
+def add_idea(idea:Idea):
+    try:
+        with registry.session(DB) as db: return registry.add_strategy(db,idea.key,idea.name,idea.hypothesis,idea.parent or None,idea.origin)
+    except ValueError as e: raise HTTPException(400,str(e)) from e
+
+class StrategyAction(BaseModel):
+    action:str
+    reason:str|None=None
+    text:str=Field('',max_length=2000)
+
+@app.post('/api/library/{key}')
+def act(key:str,body:StrategyAction):
+    # Status only moves through the registry's gates; this endpoint cannot override one.
+    try:
+        with registry.session(DB) as db:
+            if body.action=='promote': registry.promote(db,key)
+            elif body.action=='archive': registry.archive(db,key,body.reason or '',body.text)
+            elif body.action=='reopen': registry.reopen(db,key,body.text)
+            elif body.action=='hypothesis': registry.set_hypothesis(db,key,body.text)
+            elif body.action=='note':
+                if not body.text.strip(): raise ValueError('A note needs some text.')
+                registry.require(db,key); registry.note(db,key,'note',body.text.strip())
+            else: raise ValueError('Unknown action.')
+            return strategy_detail(db,key)
+    except ValueError as e: raise HTTPException(400,str(e)) from e
 
 @app.get('/api/presets')
 def presets():

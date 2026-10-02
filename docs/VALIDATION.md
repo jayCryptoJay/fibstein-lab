@@ -20,6 +20,16 @@ Using the bundled January 2025 Binance archive data and the January 15–Februar
 
 Expansion check: April 2024 JTO backtests completed successfully with 5m, 15m, 30m and 1h signals using 1m execution and historical funding. They produced 154, 71, 50 and 37 trades respectively, with zero missing execution minutes. This checks data compatibility; it is not a strategy recommendation.
 
+## Research memory additions (2 October 2026)
+
+Validated in Linux with Python 3.11 and 3.12 and local headless Chromium. Native Windows was not independently tested.
+
+102 tests pass: the original 62 unchanged, plus 40 covering trial counting and its idempotence, integer and float parameters hashing to one trial, lineage counts that include archived variants, each gate blocking on its own, promotion refusing while a gate is pending, evidence taken from the latest held-out run, run cards copying engine numbers and keeping every warning, each finding rule, the command line, and the look-ahead check catching a strategy that reads the next bar.
+
+`engine.py`, `data.py`, `experiments.py`, `strategies.py` and `config.py` are byte-identical to the previous release, so the engine fingerprint is unchanged. Using real Binance archive data, the January 15 to February 1 JTO sample still produces 53 trades and approximately −5.23%.
+
+End-to-end on real JTOUSDT data: a backtest, a six-candidate three-fold walk-forward, a cost stress and a strategy comparison were run through `python -m backend.lab run`; the registry counted 7 distinct trend-pullback trials across them, and the gates refused candidate status on a losing held-out result. In the browser at 1536 × 1024 and 390 × 844: the Library tab, recording an idea, adding a note, archiving, reopening, and the findings panel on backtest and walk-forward results. No console errors; document width matched the viewport.
+
 ## Remaining limitations
 
 Candle-based fills cannot reproduce the order book, exact intrabar ordering or exchange latency. Liquidation calculations use disclosed approximations, including trade-price rather than historical mark-price data. Funding timestamps are aligned to execution boundaries. Exchange rules require user overrides when historical rules are unavailable. Starter strategies have not been established as profitable. See the README and in-app methodology before interpreting results.

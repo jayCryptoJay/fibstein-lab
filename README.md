@@ -88,15 +88,30 @@ python -m pytest tests -q
 
 Tests cover manually calculable trades, fee/slippage identities, funding direction/timing, leverage, stop/target ambiguity, gap exits, limit penetration, trailing timing, portfolio capital timing, source validation, timestamp units, higher-timeframe prefix invariance and training-only parameter selection. Unit fixtures are synthetic and are never shown as historical performance.
 
+## Research memory and run cards
+
+Every saved run is recorded in the **Library** as a study, and every configuration it evaluated as a trial. A result is labelled best of N across its strategy's whole lineage. Strategies move `draft → candidate → promoted` only through objective gates, or are archived with one of six fixed reasons; archived trials are kept and still count. Promotion additionally needs overfitting checks and a locked final holdout that are not built yet, so nothing can be promoted today.
+
+Each result also has a **run card**: a few kilobytes of JSON with the verdict, key numbers per date range, the cost breakdown, results by pair, side, regime and exit reason, signal counts, fixed-rule findings and every warning. The same content is available as a short Markdown digest, which is the intended input for an AI assistant.
+
+```bash
+python -m backend.lab digest latest     # Markdown digest of the newest run
+python -m backend.lab library           # every strategy, trial counts, latest held-out result
+python -m backend.lab journal           # hypotheses, outcomes and status history
+python -m backend.lab --help
+```
+
+See `docs/RESEARCH-MEMORY.md` for the gates, the card schema and every command, and `docs/RESEARCH-PLAN.md` for what comes next.
+
 ## Add a strategy
 
-Create `custom_strategies.py` beside `launch.py`. Import `register_strategy` from `backend.strategies`, then register a function `(features, config) -> pandas.Series` of exactly `-1, 0, 1` aligned to feature timestamps. The provided features include open/high/low/close/volume, fast/slow EMA, ATR, RSI, daily VWAP and completed higher-timeframe gates. See the existing three implementations for the interface. A custom strategy is trusted local Python code: do not install untrusted code. New custom parameters require fields in Config and dashboard controls. Pine Script is not executed directly.
+Create `custom_strategies.py` beside `launch.py`. Import `register_strategy` from `backend.strategies`, then register a function `(features, config) -> pandas.Series` of exactly `-1, 0, 1` aligned to feature timestamps. The provided features include open/high/low/close/volume, fast/slow EMA, ATR, RSI, daily VWAP and completed higher-timeframe gates. See the existing three implementations for the interface. A custom strategy is trusted local Python code: do not install untrusted code. New custom parameters require fields in Config and dashboard controls. Pine Script is not executed directly; `docs/PINE-CONVERSION.md` describes how to convert a script and what cannot be converted yet. Check any new strategy for look-ahead with `python -m backend.lab check <key>`.
 
 ## Development and persistence
 
 The source frontend is React/Vite. To rebuild it: `cd frontend`, `npm ci`, `npm run build`. Start backend development with `python -m uvicorn backend.server:app --host 127.0.0.1 --port 8765`. Vite's development proxy points to that port.
 
-`workspace/lab.sqlite3` stores named presets and run summaries; `workspace/runs/` stores full compressed results. `data/` stores price and funding caches. Keep these folders when updating. No result is sent to an external service. Docker is optional: `docker compose up --build` binds to loopback by default and persists the two folders. Docker installation was not exercised in this environment.
+`workspace/lab.sqlite3` stores named presets, run summaries and the research registry; `workspace/runs/` stores full compressed results. `data/` stores price and funding caches. Keep these folders when updating. No result is sent to an external service. Docker is optional: `docker compose up --build` binds to loopback by default and persists the two folders. Docker installation was not exercised in this environment.
 
 ## Why these tools
 
