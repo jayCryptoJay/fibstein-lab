@@ -27,9 +27,13 @@ backend/
   engine.py        Event-driven simulation. The core.
   experiments.py   Walk-forward, grid, compare, cost-stress.
   verdict.py       Turns a metrics dict into one plain-language sentence.
+  runcard.py       Turns a saved run into a JSON card, a Markdown digest and fixed-rule findings. Pure.
+  registry.py      Research memory: strategies, studies, trials, gates, journal. Never deletes.
+  causality.py     Look-ahead check for any registered strategy.
+  lab.py           Command line over the three above: python -m backend.lab --help
   server.py        HTTP API, job queue, run persistence.
 frontend/src/      React. Settings (left rail), Results (main), Views (data/compare/docs).
-tests/             62 tests. All must pass before any commit.
+tests/             102 tests. All must pass before any commit.
 presets/           Saved configurations, including the bundled sample.
 data/              Cached candles. NOT tracked in git. See "Data" below.
 ```
@@ -38,7 +42,7 @@ data/              Cached candles. NOT tracked in git. See "Data" below.
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests -q     # expect: 62 passed
+.venv/bin/python -m pytest tests -q     # expect: 102 passed
 .venv/bin/python launch.py              # serves the app
 ```
 
@@ -87,6 +91,15 @@ are), but they must remain in the payload and in exports.
 
 **6. No candle data in git.** See below.
 
+**7. Every trial is counted, and none is ever removed.**
+
+Saving a run records it as a study and its candidates as trials, in the same
+transaction (`server.persist_result` → `registry.record_run`). "Best of N" is
+counted across a strategy's whole lineage, archived variants included. Do not add
+a delete, a reset, or a way to save a run without recording it, and do not let a
+status move without passing its gates: `registry.promote` has no override on
+purpose. See `docs/RESEARCH-MEMORY.md`.
+
 ---
 
 ## Data
@@ -131,8 +144,11 @@ These are additive, well-isolated, and hard to get catastrophically wrong:
 - Frontend components, styling, responsive behaviour, accessibility.
 - Copy: labels, hints, empty states, error messages, methodology docs.
 - New entries in `verdict.py` — it is pure, takes a metrics dict, returns a dict.
+- New findings in `runcard.py` — also pure. A finding reads the engine's numbers;
+  it never recomputes performance.
 - New strategies via `register_strategy()` in `strategies.py`, provided the
-  returned Series respects invariant 1.
+  returned Series respects invariant 1. Prove it: `python -m backend.lab check <key>`.
+  Pine conversions follow `docs/PINE-CONVERSION.md`.
 - Tests. More of them, especially around cost accounting.
 - Anything under `docs/`.
 
@@ -150,7 +166,11 @@ match the file you are editing rather than reformatting it. Comments explain
 *why*, never *what* — the existing one-line comments above tricky blocks in
 `engine.py` are the model. No emoji in code, commits, or UI copy.
 
-Every change: run `pytest tests -q` and confirm 62 passing before you commit.
+Every change: run `pytest tests -q` and confirm 102 passing before you commit.
+
+Before proposing a new strategy or variant, read the journal
+(`python -m backend.lab journal`) so an archived idea is not retried, and read
+`docs/RESEARCH-PLAN.md` for what is built and what still needs approval.
 
 ## Brand
 
