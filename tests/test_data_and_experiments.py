@@ -60,7 +60,7 @@ def test_walkforward_selects_training_winner_only(monkeypatch):
         # Stop=2 wins training; stop=1 would win testing. Selection must stay 2.
         delta=(20 if c.stop_atr==2 else 10) if train else (-5 if c.stop_atr==2 else 50)
         eq=[{'timestamp':pd.Timestamp(c.start).value//10**6,'equity':c.balance}, {'timestamp':pd.Timestamp(c.end).value//10**6,'equity':c.balance+delta}]
-        m=metrics([],eq,c.balance,0);m['trade_count']=50
+        m=metrics([],eq,c.balance,0);m['trade_count']=50;m['expectancy_r']=delta/50
         return {'metrics':m,'equity':eq,'trades':[]}
     monkeypatch.setattr(experiments,'simulate',fake)
     c=Config(start='2025-01-01',end='2025-02-01')
