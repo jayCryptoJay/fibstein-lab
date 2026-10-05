@@ -58,6 +58,20 @@ The change is additive: a strategy that returns a plain Series behaves exactly a
 
 New behaviour is covered by unit tests with hand-calculable prices: signal exit at the next open with the cost identity intact, reversal on one open, strategy-supplied stops and targets and their rejection on the wrong side of the fill, entries with no target or no time limit, stops and targets amended while a position is open, and a resting limit entry withdrawn by an exit signal. The look-ahead check now compares exits and price levels as well as entries.
 
+## Pine scripts (5 October 2026)
+
+Validated in Linux with Python 3.11 and 3.12 and local headless Chromium. Native Windows was not independently tested.
+
+247 tests pass. `pine.py` joined the engine fingerprint and `strategies.py` gained one plan column (`unfiltered`), so the fingerprint changed. `engine.py`, `data.py` and `experiments.py` are unchanged from the signal-exits step; the three pinned engine scenarios did not move.
+
+Indicators: 57 series are compared in the tests, bar by bar on 2,000 synthetic candles, with independent pandas and NumPy calculations of the published formulas: the SMA-seeded recursive averages, weighted, Hull, ALMA and regression averages, RSI, ATR, MACD, Bollinger and Keltner bands, stochastic, CCI, MFI, CMO, TSI, supertrend, DMI/ADX, pivots and the rest. All match to floating-point tolerance. Parabolic SAR is checked by property only. Higher-timeframe requests are compared with candles aggregated independently from the 1-minute data, for both the plain form and the offset-with-lookahead form.
+
+Agreement with the engine: four scripts (a moving-average reversal, an RSI entry with a percentage stop and target placed a bar after the fill, a Bollinger entry with a bracket, and a higher-timeframe trend filter) were run on real JTOUSDT candles, 1 October 2024 to 1 February 2025, on 15-minute signals with default settings and on 5-minute signals long-only with limit targets. Across the eight runs the engine recorded 5,243 trades. 5,239 of them entered on the candle the script's own position model expected and exited inside the candle where that model closed; the other 4 were positions still open when the test ended. The engine refused 3 entries for size. The cost identity held on every trade.
+
+In the browser at 1440 × 1000 and 390 × 844: paste, check, add, select and run a script, and a refused script with its line numbers. Document width matched the viewport.
+
+Not verified: agreement with TradingView's Strategy Tester. No script's trade list has been compared with TradingView's on the same market.
+
 ## Remaining limitations
 
 Candle-based fills cannot reproduce the order book, exact intrabar ordering or exchange latency. Liquidation calculations use disclosed approximations, including trade-price rather than historical mark-price data. Funding timestamps are aligned to execution boundaries. Exchange rules require user overrides when historical rules are unavailable. Starter strategies have not been established as profitable. See the README and in-app methodology before interpreting results.

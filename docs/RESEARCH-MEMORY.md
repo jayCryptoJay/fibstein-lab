@@ -10,6 +10,7 @@ changing engine fills, market-data validation, strategies or Config.
 | `backend/holdout.py` | Locks fresh final dates, consumes attempts atomically and exposes only pass/fail. |
 | `backend/registry.py` | Strategies, studies, trials, a holdout ledger and a journal, in `workspace/lab.sqlite3`. |
 | `backend/causality.py` | Look-ahead check for any registered strategy. |
+| `backend/pine.py` | Runs a pasted Pine Script strategy candle by candle. See `PINE-CONVERSION.md`. |
 | `backend/lab.py` | Command line over all of the above: `python -m backend.lab --help`. |
 
 The app shows the same data in the **Library** tab and in the **What the numbers
@@ -132,6 +133,8 @@ python -m backend.lab note trend_pullback "..."
 python -m backend.lab journal                   # read this before proposing a new idea
 python -m backend.lab check trend_pullback      # look-ahead check
 python -m backend.lab sync                      # record saved runs the registry has not seen
+python -m backend.lab pine check script.pine    # what is exact, what differs, what is refused
+python -m backend.lab pine add script.pine      # save it as a strategy; --parent KEY for a variant
 ```
 
 `library`, `journal`, `gates`, `runs`, `strategy` and `check` accept `--json`.
@@ -145,7 +148,8 @@ Windows, `.venv/bin/python -m backend.lab ...` elsewhere.
 
 `GET /api/runs/{id}/card`, `GET /api/runs/{id}/digest`, `GET /api/library`,
 `GET /api/library/{key}`, `POST /api/library` (record an idea),
-`POST /api/library/{key}` with `{"action": "promote" | "archive" | "reopen" | "hypothesis" | "note", "reason": ..., "text": ...}`.
+`POST /api/library/{key}` with `{"action": "promote" | "archive" | "reopen" | "hypothesis" | "note", "reason": ..., "text": ...}`,
+`POST /api/pine/check` and `POST /api/pine` with `{"source", "name", "hypothesis", "parent"}`, `GET /api/pine`, `GET /api/pine/{key}`.
 
 ## Known limits
 

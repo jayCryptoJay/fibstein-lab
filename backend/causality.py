@@ -25,7 +25,8 @@ def synthetic(n=12000, seed=19):
 def prefix_invariant(strategy, config=None, frames=None, cuts=CUTS):
     """Return {ok, conclusive, signals_checked, mismatches}. `ok` is False on any look-ahead."""
     # Higher-timeframe gates are applied after the strategy and tested on their own; off here so more signals are compared.
-    c = config or Config(strategy=strategy, htf_filter='off')
+    # Dated to cover the synthetic candles: a strategy that waits for the test to start must be able to trade them.
+    c = config or Config(strategy=strategy, htf_filter='off', start='2025-01-01', end='2025-02-01')
     frames = frames if frames is not None else [synthetic(seed=s) for s in SEEDS]
     checked = 0; mismatches = []
     for raw in frames:

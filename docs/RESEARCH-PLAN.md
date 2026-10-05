@@ -10,7 +10,7 @@ the brief; the rest is what running it found and what has been built since.
 |---|---|---|
 | 1 | Run cards, findings, command line, registry with gates and archive reasons, Library view, look-ahead check, Pine conversion guide | **Built** (2 October 2026). 102 tests. See `RESEARCH-MEMORY.md`, `PINE-CONVERSION.md`. |
 | 2 | Parallel runs, Optuna studies, `strategy_params`, locked holdout, overfitting gates, the two selection fixes | Steps 1 and 2 (selection fixes; versioning and final holdout) approved and implemented, 5 October 2026: 115 and 157 tests, verified on Python 3.11 and 3.12. `strategy_params`, parallel runs, Optuna and the overfitting gates are not approved yet. |
-| 3 | Signal exits, long/short flips, per-signal stop and target prices, TradingView parity harness, optional faster engine | Signal exits, reversals, per-signal and amended stops and targets: **built** (5 October 2026), 183 tests, existing strategies unchanged trade for trade. Parity harness and faster engine: not started. |
+| 3 | Signal exits, long/short flips, per-signal stop and target prices, TradingView parity harness, optional faster engine | Signal exits, reversals, per-signal and amended stops and targets: **built** (5 October 2026), 183 tests, existing strategies unchanged trade for trade. Pine scripts: **built** (5 October 2026), 247 tests: a bar-by-bar interpreter for v5 and v6 in `backend/pine.py`, the Pine tab, and `lab pine`; see `PINE-CONVERSION.md`. Agreement with TradingView's own trade lists has not been measured: the parity harness is not started. Faster engine: not started. |
 | 4 | MCP server with a budgeted autonomous loop; XGBoost meta-labeling | Optional. |
 
 Phase 1 decisions that differ from, or sharpen, the plan as first written:
@@ -23,8 +23,11 @@ Phase 1 decisions that differ from, or sharpen, the plan as first written:
   (raw result minus twice total costs), not a rerun. A true rerun at doubled costs
   on the held-out windows belongs with the experiments work in phase 2.
 - **Evidence is the latest held-out run, never the best.**
-- **Pine conversion is on demand.** No script has been converted yet; the guide,
-  the look-ahead check and the registry origin field are in place. Send a script.
+- **Pine runs, it is not converted.** The first plan was AI-assisted rewriting of
+  each script into a Python plugin. What was built instead is a small interpreter
+  with no new dependency: paste a script and it runs. A rewrite can be wrong in ways
+  nobody sees; an interpreter that executes one completed candle at a time cannot
+  look ahead, and it refuses what it does not support.
 
 Things noticed while building, left alone because they sit in protected files:
 
