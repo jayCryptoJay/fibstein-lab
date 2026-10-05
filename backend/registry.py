@@ -9,10 +9,11 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from .config import Config, STRATEGIES
+from . import paths
 from .verdict import COSTS
 
-ROOT = Path(__file__).resolve().parents[1]
-DB = ROOT/'workspace'/'lab.sqlite3'
+ROOT = paths.APP
+DB = paths.WORKSPACE/'lab.sqlite3'
 ENGINE_FILES = ['engine.py', 'strategies.py', 'config.py', 'data.py', 'experiments.py', 'pine.py']
 
 STATUSES = ['draft', 'candidate', 'promoted', 'archived']
@@ -57,7 +58,14 @@ def now(): return datetime.now(timezone.utc).isoformat()
 
 def connect(path=None):
     path = Path(path or DB); path.parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(path); db.row_factory = sqlite3.Row; db.executescript(SCHEMA)
+    db = sqlite3.connect(path)
+    # A failed open must not leave the file held: Windows cannot move or delete a database with an open handle.
+    try: return prepare(db)
+    except BaseException: db.close(); raise
+
+
+def prepare(db):
+    db.row_factory = sqlite3.Row; db.executescript(SCHEMA)
     if db.execute('PRAGMA user_version').fetchone()[0] >= SCHEMA_VERSION: return db
     # Old evidence keeps its original digest; migrations must not bless it as current code.
     with db:
@@ -90,11 +98,15 @@ def session(path=None):
 
 
 def engine_fingerprint(root=None):
-    """Hash of the code that decides results. Identical to the digest stored on every saved run."""
-    root = Path(root or ROOT)
+    """Hash of the code that decides results. Identical to the digest stored on every saved run.
+
+    Line endings are normalised first, so the same code has the same fingerprint on Windows, macOS and Linux
+    and in an installed app. Custom strategies are the user's, so they are read from the user's folder.
+    """
+    custom = (Path(root) if root else paths.HOME)/'custom_strategies.py'; root = Path(root or ROOT)
     source = b''.join((root/'backend'/x).read_bytes() for x in ENGINE_FILES)
-    if (root/'custom_strategies.py').exists(): source += (root/'custom_strategies.py').read_bytes()
-    return hashlib.sha256(source).hexdigest()
+    if custom.exists(): source += custom.read_bytes()
+    return hashlib.sha256(source.replace(b'\r\n', b'\n')).hexdigest()
 
 
 def strategy_version(key, engine):

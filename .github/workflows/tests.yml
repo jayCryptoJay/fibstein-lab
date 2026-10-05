@@ -1,0 +1,38 @@
+name: Tests
+
+# The full suite on every operating system the app claims to run on.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: ${{ matrix.os }} · Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      # Both supported Python versions on Linux; the newer one on Windows and macOS, where runners are scarcer.
+      matrix:
+        include:
+          - {os: ubuntu-latest, python: '3.11'}
+          - {os: ubuntu-latest, python: '3.12'}
+          - {os: windows-latest, python: '3.12'}
+          - {os: macos-latest, python: '3.12'}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m pytest tests -q

@@ -79,7 +79,7 @@ def lock(key, start, end, path=None, results_dir=None):
     start = date.fromisoformat(start).isoformat(); end = date.fromisoformat(end).isoformat()
     if end <= start: raise ValueError('Holdout end must follow start (exclusive).')
     engine = registry.engine_fingerprint(); version = registry.strategy_version(key, engine)
-    results = Path(results_dir or registry.ROOT/'workspace'/'runs')
+    results = Path(results_dir or registry.paths.WORKSPACE/'runs')
     # Reading every saved run can be slow; do it before taking the write lock, not while holding it.
     with registry.session(path) as db: unreadable = registry.sync(db, results)['unreadable']
     if unreadable: raise ValueError('Unreadable saved runs prevent proving that this period is fresh.')

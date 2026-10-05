@@ -34,9 +34,11 @@ backend/
   holdout.py       Final holdout: lock fresh dates, check data, consume one attempt, report pass or fail only.
   lab.py           Command line over the three above: python -m backend.lab --help
   server.py        HTTP API, job queue, run persistence.
+  paths.py         Where the program's files are and where the user's research is kept (FIBSTEIN_HOME).
 frontend/src/      React. Settings (left rail), Results (main), Views (data/compare/docs).
-tests/             247 tests. All must pass before any commit.
+tests/             251 tests. All must pass before any commit.
 presets/           Saved configurations, including the bundled sample.
+packaging/         PyInstaller recipe for the one-folder app. Built and tried by scripts/build_app.py.
 data/              Cached candles. NOT tracked in git. See "Data" below.
 ```
 
@@ -44,7 +46,7 @@ data/              Cached candles. NOT tracked in git. See "Data" below.
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests -q     # expect: 247 passed
+.venv/bin/python -m pytest tests -q     # expect: 251 passed
 .venv/bin/python launch.py              # serves the app
 ```
 
@@ -139,6 +141,13 @@ calculation in `tests/test_pine.py`. The interpreter is part of the engine
 fingerprint, and each saved script's key carries a hash of its logic, so an edited
 script is a new strategy whose trials are counted with its parent.
 
+**Research data is never inside the program folder of an installed app.** A source
+checkout keeps `workspace/` and `data/` in the project, as always. The installed
+app keeps them in a per-user folder (`backend/paths.py`), so replacing the app
+cannot lose the registry. Do not write user data under `paths.APP`. Release builds
+fetch their sample candles at build time with the checksum-verified downloader;
+invariant 6 still holds for the repository.
+
 **Engine results are pinned.** `tests/test_engine_golden.py` holds results recorded
 from the v1.0.0 engine for the three built-in strategies. Signal exits were added
 without moving them, and 27 real-data scenarios (5,105 trades) matched the old
@@ -195,7 +204,8 @@ match the file you are editing rather than reformatting it. Comments explain
 *why*, never *what* — the existing one-line comments above tricky blocks in
 `engine.py` are the model. No emoji in code, commits, or UI copy.
 
-Every change: run `pytest tests -q` and confirm 247 passing before you commit. If your
+Every change: run `pytest tests -q` and confirm 251 passing before you commit. Every pull request also
+runs the suite on Linux, Windows and macOS (`.github/workflows/tests.yml`); a red check there is a finding, not noise. If your
 environment cannot install the pinned dependencies, say so in the pull request and
 keep it draft until someone has run the full suite.
 

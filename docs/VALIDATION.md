@@ -72,6 +72,18 @@ In the browser at 1440 × 1000 and 390 × 844: paste, check, add, select and run
 
 Not verified: agreement with TradingView's Strategy Tester. No script's trade list has been compared with TradingView's on the same market.
 
+## One-folder app and automated checks (5 October 2026)
+
+251 tests pass on Linux with Python 3.11 and 3.12.
+
+`scripts/build_app.py` was run on Linux: it fetched January 2025 for the ten default pairs with checksum verification, built the app with PyInstaller 6.22.3, started it with an empty per-user folder and required, before packing, that the app answered, used the per-user folder, reported the same engine fingerprint as the source tree, passed a Pine script through the checker, copied the sample candles into the user folder, and completed the sample backtest (53 trades, the documented figure). The 66 MB archive was then unpacked elsewhere and started from there; a second start opened the running app instead of failing; a bybit download reached the network through the bundled exchange adapters; a Pine script was added and backtested inside the installed app.
+
+The engine fingerprint now normalises line endings, so one commit has one fingerprint on every system. It changed once because of that.
+
+GitHub Actions, first runs: the app built on Windows, macOS (Apple silicon) and Linux, and each built app completed the same trial, including the sample backtest. That is the first time any part of FibStein Lab was run on Windows or macOS. The test suite passed on Linux and macOS with Python 3.11 and 3.12. On Windows 250 of 251 tests passed; the one failure was a test fixture that left its database file open, which Windows will not delete. With the fixture closed the suite passes on Windows with both Python versions.
+
+Not verified: a person starting the Windows or macOS app by double-click, with the SmartScreen and Gatekeeper prompts that unsigned builds trigger.
+
 ## Remaining limitations
 
 Candle-based fills cannot reproduce the order book, exact intrabar ordering or exchange latency. Liquidation calculations use disclosed approximations, including trade-price rather than historical mark-price data. Funding timestamps are aligned to execution boundaries. Exchange rules require user overrides when historical rules are unavailable. Starter strategies have not been established as profitable. See the README and in-app methodology before interpreting results.

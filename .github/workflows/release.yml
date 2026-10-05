@@ -1,0 +1,64 @@
+name: App builds
+
+# Builds the one-folder app for Windows, macOS and Linux, starts each one and runs the sample backtest in it.
+# A tag such as v1.1.0 also publishes the three archives as a draft release for a person to review and publish.
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths: ['packaging/**', 'scripts/build_app.py', 'launch.py', 'backend/paths.py', 'requirements*.txt', '.github/workflows/release.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  draft:
+    name: Draft release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft --generate-notes --title "FibStein Lab $GITHUB_REF_NAME"
+
+  build:
+    name: ${{ matrix.os }}
+    needs: draft
+    if: ${{ !cancelled() && (needs.draft.result == 'success' || needs.draft.result == 'skipped') }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: python -m pip install -r requirements-build.txt
+      # Fetches the sample month with checksum verification, builds, starts the app and runs the sample backtest in it.
+      - run: python scripts/build_app.py ${{ startsWith(github.ref, 'refs/tags/v') && '--require-sample' || '' }}
+      - uses: actions/upload-artifact@v6
+        with:
+          name: FibStein-Lab-${{ runner.os }}-${{ runner.arch }}
+          path: |
+            dist/FibStein-Lab-*
+          retention-days: 14
+          if-no-files-found: error
+      - if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: gh release upload "$GITHUB_REF_NAME" dist/FibStein-Lab-* --clobber
