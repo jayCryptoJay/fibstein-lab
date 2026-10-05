@@ -13,7 +13,7 @@ from .data import ROOT,inventory,download_archive,download_ccxt,import_csv,utc
 from .engine import run_backtest
 from .experiments import experiment
 from .verdict import read as read_verdict
-from . import registry,runcard,holdout,pine,paths
+from . import registry,runcard,holdout,pine,paths,__version__
 
 STATE=paths.WORKSPACE; STATE.mkdir(parents=True,exist_ok=True)
 RESULTS=STATE/'runs'; RESULTS.mkdir(exist_ok=True)
@@ -26,7 +26,7 @@ with sqlite3.connect(DB) as db:
         preset_config=Config.model_validate_json(preset_path.read_text()).model_dump(mode='json')
         db.execute('INSERT OR IGNORE INTO presets VALUES (?,?)',(preset_path.stem.replace('-',' ').title(),json.dumps(preset_config)))
 JOBS={}; POOL=ThreadPoolExecutor(max_workers=1); LOCK=threading.Lock()
-app=FastAPI(title='FibStein Lab',version='1.0.0',docs_url='/api/docs')
+app=FastAPI(title='FibStein Lab',version=__version__,docs_url='/api/docs')
 
 @app.middleware('http')
 async def local_write_guard(request:Request,call_next):
@@ -46,7 +46,7 @@ def persist_result(result,kind):
     if kind=='holdout': raise ValueError('Final holdouts cannot be saved or exported as ordinary runs.')
     holdout.research_access(Config.model_validate(result['config']),DB)
     rid=uuid.uuid4().hex[:16]; created=datetime.now(timezone.utc).isoformat()
-    result.update({'id':rid,'created':created,'kind':kind,'engine_version':'1.0.0'})
+    result.update({'id':rid,'created':created,'kind':kind,'engine_version':__version__})
     # Single chokepoint: every mode that reports headline metrics gets a plain-language reading.
     if result.get('metrics'):
         held_out=kind in ('walkforward','grid')
@@ -77,7 +77,7 @@ def launch(fn):
 @app.get('/api/meta')
 def meta():
     return {'pairs':PAIRS,'strategies':STRATEGIES,'defaults':Config().model_dump(mode='json'),
-            'sample':Config(start='2025-01-15',end='2025-02-01').model_dump(mode='json'),'version':'1.0.0',
+            'sample':Config(start='2025-01-15',end='2025-02-01').model_dump(mode='json'),'version':__version__,
             'engine_sha256':registry.engine_fingerprint(),'installed':paths.FROZEN,'home':str(paths.HOME)}
 
 @app.get('/api/data')

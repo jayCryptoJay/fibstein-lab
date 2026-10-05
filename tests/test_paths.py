@@ -32,3 +32,9 @@ def test_fibstein_home_moves_the_workspace_the_cache_and_custom_strategies(tmp_p
     # The program's own files still come from the program: presets load, and the user's strategy file is part of the fingerprint.
     assert out['custom'] and out['presets']>=1
     if not (ROOT/'custom_strategies.py').exists(): assert out['engine']!=registry.engine_fingerprint(ROOT)
+
+def test_the_app_reports_one_version_everywhere():
+    import json,backend
+    from backend import server
+    assert server.meta()["version"]==backend.__version__==server.app.version
+    assert json.loads((ROOT/"frontend"/"package.json").read_text())["version"]==backend.__version__

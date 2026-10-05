@@ -34,5 +34,5 @@ export default function App(){
  {tab==='Pine'&&<PineView onUse={usePine} onError={setError} refreshMeta={refreshMeta}/>}
  {tab==='Library'&&<LibraryView onLoad={load} onError={setError}/>}
  {tab==='Methodology'&&<Methodology/>}
- </main></div><footer><span>Research tool · Results depend on data quality</span><span>FIBSTEIN / LAB <small>v1.0.0</small></span></footer></>
+ </main></div><footer><span>Research tool · Results depend on data quality</span><span>FIBSTEIN / LAB <small>v{meta.version}</small></span></footer></>
 }

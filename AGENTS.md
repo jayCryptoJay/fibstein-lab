@@ -36,7 +36,7 @@ backend/
   server.py        HTTP API, job queue, run persistence.
   paths.py         Where the program's files are and where the user's research is kept (FIBSTEIN_HOME).
 frontend/src/      React. Settings (left rail), Results (main), Views (data/compare/docs).
-tests/             251 tests. All must pass before any commit.
+tests/             252 tests. All must pass before any commit.
 presets/           Saved configurations, including the bundled sample.
 packaging/         PyInstaller recipe for the one-folder app. Built and tried by scripts/build_app.py.
 data/              Cached candles. NOT tracked in git. See "Data" below.
@@ -46,7 +46,7 @@ data/              Cached candles. NOT tracked in git. See "Data" below.
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests -q     # expect: 251 passed
+.venv/bin/python -m pytest tests -q     # expect: 252 passed
 .venv/bin/python launch.py              # serves the app
 ```
 
@@ -204,7 +204,7 @@ match the file you are editing rather than reformatting it. Comments explain
 *why*, never *what* — the existing one-line comments above tricky blocks in
 `engine.py` are the model. No emoji in code, commits, or UI copy.
 
-Every change: run `pytest tests -q` and confirm 251 passing before you commit. Every pull request also
+Every change: run `pytest tests -q` and confirm 252 passing before you commit. Every pull request also
 runs the suite on Linux, Windows and macOS (`.github/workflows/tests.yml`); a red check there is a finding, not noise. If your
 environment cannot install the pinned dependencies, say so in the pull request and
 keep it draft until someone has run the full suite.
