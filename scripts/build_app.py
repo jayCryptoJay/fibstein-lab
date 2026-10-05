@@ -68,6 +68,8 @@ def trial(folder, with_sample):
                 except OSError: time.sleep(1)
             say(f'app answered after {time.time() - started:.0f}s')
             assert meta['installed'] and Path(meta['home']).resolve() == Path(home).resolve(), 'the app is not using the per-user folder'
+            tag = os.environ.get('GITHUB_REF_NAME', '') if os.environ.get('GITHUB_REF_TYPE') == 'tag' else ''
+            assert not tag or tag == 'v' + meta['version'], f'tag {tag} does not match the app version {meta["version"]}'
             # Same sources, same fingerprint: evidence produced by the installed app and by a checkout must agree.
             assert meta['engine_sha256'] == registry.engine_fingerprint(ROOT), 'engine fingerprint differs from the source tree'
             report = api('/pine/check', {'source': SCRIPT}); assert report['ok'] and report['look_ahead']['ok'], report['refused']
