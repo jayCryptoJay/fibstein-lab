@@ -9,7 +9,7 @@ its results mean anything (AGENTS.md, invariant 1).
 import numpy as np
 import pandas as pd
 from .config import Config
-from .strategies import prepare
+from .strategies import prepare, PLAN_FLAGS, PLAN_PRICES
 
 CUTS = 40          # A one-bar peek only shows at the prefix's last bar, so one cut would usually miss it.
 SEEDS = (19, 7)
@@ -36,8 +36,10 @@ def prefix_invariant(strategy, config=None, frames=None, cuts=CUTS):
             limit = int(raw.index[n - 1].timestamp() * 1000) + 60000
             seen = {t: s for t, s in full.items() if t <= limit}
             checked += len(seen)
+            # Entries, exits and price levels must all be final once their bar has closed.
+            intent = lambda s: s and {k: s[k] for k in ('side', *PLAN_FLAGS, *PLAN_PRICES) if k in s}
             for t in sorted(set(part) | set(seen)):
-                a, b = part.get(t), seen.get(t)
-                if (a and a['side']) != (b and b['side']):
-                    mismatches.append({'timestamp': t, 'prefix_minutes': n, 'prefix_side': a and a['side'], 'full_side': b and b['side']})
+                a, b = intent(part.get(t)), intent(seen.get(t))
+                if a != b:
+                    mismatches.append({'timestamp': t, 'prefix_minutes': n, 'prefix_side': a and a['side'], 'full_side': b and b['side'], 'prefix': a, 'full': b})
     return {'strategy': c.strategy, 'ok': not mismatches, 'conclusive': checked > 0, 'signals_checked': checked, 'mismatches': mismatches[:20]}

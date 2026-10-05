@@ -34,7 +34,7 @@ backend/
   lab.py           Command line over the three above: python -m backend.lab --help
   server.py        HTTP API, job queue, run persistence.
 frontend/src/      React. Settings (left rail), Results (main), Views (data/compare/docs).
-tests/             157 tests. All must pass before any commit.
+tests/             183 tests. All must pass before any commit.
 presets/           Saved configurations, including the bundled sample.
 data/              Cached candles. NOT tracked in git. See "Data" below.
 ```
@@ -43,7 +43,7 @@ data/              Cached candles. NOT tracked in git. See "Data" below.
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests -q     # expect: 157 passed
+.venv/bin/python -m pytest tests -q     # expect: 183 passed
 .venv/bin/python launch.py              # serves the app
 ```
 
@@ -129,6 +129,12 @@ the existing `day()` helper) rather than committing a file.
 
 ## Known issues
 
+**Engine results are pinned.** `tests/test_engine_golden.py` holds results recorded
+from the v1.0.0 engine for the three built-in strategies. Signal exits were added
+without moving them, and 27 real-data scenarios (5,105 trades) matched the old
+engine trade for trade. An engine change that moves these numbers has changed
+behaviour for strategies that did not ask for it.
+
 **pandas 3.x rejects all valid data.** `data.py` line 42 checks minute alignment
 with `f.index.asi8 % (60*10**9)`, which assumes nanosecond resolution. On pandas
 3.0, `to_datetime(unit='ms')` returns `datetime64[ms]`, so `asi8` is in
@@ -158,6 +164,8 @@ These are additive, well-isolated, and hard to get catastrophically wrong:
   it never recomputes performance.
 - New strategies via `register_strategy()` in `strategies.py`, provided the
   returned Series respects invariant 1. Prove it: `python -m backend.lab check <key>`.
+  A strategy may return a plan frame instead, with its own exits, stops and targets
+  (see `register_strategy`); the same check covers every column of it.
   Pine conversions follow `docs/PINE-CONVERSION.md`.
 - Tests. More of them, especially around cost accounting.
 - Anything under `docs/`.
@@ -176,7 +184,7 @@ match the file you are editing rather than reformatting it. Comments explain
 *why*, never *what* — the existing one-line comments above tricky blocks in
 `engine.py` are the model. No emoji in code, commits, or UI copy.
 
-Every change: run `pytest tests -q` and confirm 157 passing before you commit. If your
+Every change: run `pytest tests -q` and confirm 183 passing before you commit. If your
 environment cannot install the pinned dependencies, say so in the pull request and
 keep it draft until someone has run the full suite.
 
