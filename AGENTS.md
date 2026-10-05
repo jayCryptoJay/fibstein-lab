@@ -204,7 +204,8 @@ match the file you are editing rather than reformatting it. Comments explain
 *why*, never *what* — the existing one-line comments above tricky blocks in
 `engine.py` are the model. No emoji in code, commits, or UI copy.
 
-Every change: run `pytest tests -q` and confirm 251 passing before you commit. If your
+Every change: run `pytest tests -q` and confirm 251 passing before you commit. Every pull request also
+runs the suite on Linux, Windows and macOS (`.github/workflows/tests.yml`); a red check there is a finding, not noise. If your
 environment cannot install the pinned dependencies, say so in the pull request and
 keep it draft until someone has run the full suite.
 

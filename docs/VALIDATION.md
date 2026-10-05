@@ -80,7 +80,9 @@ Not verified: agreement with TradingView's Strategy Tester. No script's trade li
 
 The engine fingerprint now normalises line endings, so one commit has one fingerprint on every system. It changed once because of that.
 
-Not verified here: the Windows and macOS builds, and the test suite on Windows and macOS. Those are what the two GitHub Actions workflows added in this step are for: `tests.yml` runs the suite on Linux, Windows and macOS with Python 3.11 and 3.12, and `release.yml` builds and tries the app on all three. Their first results are the first real evidence for those systems. The builds are not code-signed.
+GitHub Actions, first runs: the app built on Windows, macOS (Apple silicon) and Linux, and each built app completed the same trial, including the sample backtest. That is the first time any part of FibStein Lab was run on Windows or macOS. The test suite passed on Linux and macOS with Python 3.11 and 3.12. On Windows 250 of 251 tests passed; the one failure was a test fixture that left its database file open, which Windows will not delete. With the fixture closed the suite passes on Windows with both Python versions.
+
+Not verified: a person starting the Windows or macOS app by double-click, with the SmartScreen and Gatekeeper prompts that unsigned builds trigger.
 
 ## Remaining limitations
 
