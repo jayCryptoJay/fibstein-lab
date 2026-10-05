@@ -58,7 +58,14 @@ def now(): return datetime.now(timezone.utc).isoformat()
 
 def connect(path=None):
     path = Path(path or DB); path.parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(path); db.row_factory = sqlite3.Row; db.executescript(SCHEMA)
+    db = sqlite3.connect(path)
+    # A failed open must not leave the file held: Windows cannot move or delete a database with an open handle.
+    try: return prepare(db)
+    except BaseException: db.close(); raise
+
+
+def prepare(db):
+    db.row_factory = sqlite3.Row; db.executescript(SCHEMA)
     if db.execute('PRAGMA user_version').fetchone()[0] >= SCHEMA_VERSION: return db
     # Old evidence keeps its original digest; migrations must not bless it as current code.
     with db:

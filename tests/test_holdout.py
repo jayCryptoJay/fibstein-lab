@@ -1,5 +1,5 @@
 import gzip, io, json, sqlite3, tempfile, unittest
-from contextlib import redirect_stdout
+from contextlib import closing, redirect_stdout
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
@@ -67,7 +67,8 @@ class HoldoutTests(unittest.TestCase):
 
     def test_legacy_migration_is_idempotent_and_keeps_history(self):
         path = self.root/'legacy.sqlite3'
-        with sqlite3.connect(path) as db:
+        # `with connection` commits but leaves the file open, and Windows will not delete an open file.
+        with closing(sqlite3.connect(path)) as db, db:
             db.executescript('CREATE TABLE studies (id TEXT PRIMARY KEY,strategy TEXT,kind TEXT,created TEXT,engine_sha256 TEXT,held_out INTEGER,config TEXT,metrics TEXT);'
                              'CREATE TABLE trials (study TEXT,fingerprint TEXT,strategy TEXT,role TEXT,parameters TEXT,metrics TEXT,created TEXT,PRIMARY KEY(study,fingerprint));')
             db.execute('INSERT INTO studies VALUES (?,?,?,?,?,?,?,?)', ('old', self.key, 'backtest', '2024', None, 0, '{}', '{}'))
