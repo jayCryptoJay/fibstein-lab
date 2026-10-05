@@ -22,7 +22,7 @@ class Position:
     pair:str; side:int; qty:float; entry:float; reference:float; entered:int
     stop:float; target:float; distance:float; margin:float; risk:float; entry_fee:float
     entry_slip:float; entry_spread:float; regime:str; atr:float
-    funding:float=0.; mae:float=0.; mfe:float=0.; limit_entry:bool=False
+    funding:float=0.; mae:float=0.; mfe:float=0.; limit_entry:bool=False; timed:bool=True
 
 def liquidation_price(p,c,mmr=None):
     m=(c.maintenance_margin_pct if mmr is None else mmr)/100+c.liquidation_fee_bps/10000
@@ -60,7 +60,7 @@ def simulate(c,bundles,signal_overrides=None,progress=lambda x:None,cancel=lambd
         v['values']=v['frame'].reindex(index)[['open','high','low','close','volume']].to_numpy(dtype=float)
         v['prev_vol']=v['prior_volume'].reindex(index).fillna(0).to_numpy()
     positions={}; pending={}; trades=[]; balance=c.balance; equity=[{'timestamp':times[0],'equity':balance}]
-    rejected=Counter(); exposure=0; peak_open=0; total_signals=0
+    rejected=Counter(); exposure=0; peak_open=0; total_signals=0; exit_signals=0; amended=0
     symbols=list(c.pairs) # Explicit priority controls simultaneous signals.
 
     def close(pair,reference,t,reason,maker=False):
@@ -84,7 +84,7 @@ def simulate(c,bundles,signal_overrides=None,progress=lambda x:None,cancel=lambd
             if cancel(): raise ValueError('Cancelled.')
             progress(f'Simulating · {i/len(times)*100:.0f}% · {len(trades)} closed trades')
         bars={s:prepared[s]['values'][i] for s in symbols}
-        opens={s:float(r[0]) for s,r in bars.items()}; closed=set()
+        opens={s:float(r[0]) for s,r in bars.items()}; closed=set(); flattened={}
         had_position=bool(positions)
         # Settlement occurs before exits/entries at the same boundary; newly opened positions do not pay.
         for pair,p in positions.items():
@@ -93,6 +93,7 @@ def simulate(c,bundles,signal_overrides=None,progress=lambda x:None,cancel=lambd
                 payment=p.side*p.qty*opens[pair]*rate; p.funding+=payment; balance-=payment
 
         def manage(pair,new_limit=False,phase='bar'):
+            nonlocal amended
             if pair not in positions: return
             p=positions[pair]; op,hi,lo,cl,vol=bars[pair]; rules=prepared[pair]['rules']
             liq=liquidation_price(p,c,rules.get('maintenance_margin_pct')) if c.margin_mode=='isolated' else (-1 if p.side==1 else float('inf'))
@@ -100,13 +101,20 @@ def simulate(c,bundles,signal_overrides=None,progress=lambda x:None,cancel=lambd
             adverse=lo if p.side==1 else hi
             # Market open is observed; limit entry's preceding open cannot trigger its newly created stop.
             if phase=='open':
+                sig=prepared[pair]['signals'].get(t); flattened[pair]=p.side
+                # A strategy may move its own levels. The signal bar has closed, so the new level is known at this open.
+                if sig and sig.get('amend_stop') is not None and p.entered<t: p.stop=round_price(sig['amend_stop'],rules['tick_size'],p.side==-1); amended+=1
+                if sig and sig.get('amend_target') is not None and p.entered<t: p.target=round_price(sig['amend_target'],rules['tick_size'],p.side==1); amended+=1
                 if breached(op,liq): close(pair,float(op),t,'isolated_liquidation_gap'); closed.add(pair); return
                 if breached(op,p.stop): close(pair,float(op),t,'stop_gap'); closed.add(pair); return
-                if t-p.entered>=c.max_hold_hours*3600000:
+                if p.timed and t-p.entered>=c.max_hold_hours*3600000:
                     close(pair,float(op),t,'time_exit'); closed.add(pair); return
-                penetration=p.target*c.limit_penetration_bps/10000 if c.target_order=='limit' else 0
-                if (op>=p.target+penetration if p.side==1 else op<=p.target-penetration):
-                    close(pair,float(p.target if c.target_order=='limit' else op),t,'target_gap',c.target_order=='limit'); closed.add(pair)
+                if p.target is not None:
+                    penetration=p.target*c.limit_penetration_bps/10000 if c.target_order=='limit' else 0
+                    if (op>=p.target+penetration if p.side==1 else op<=p.target-penetration):
+                        close(pair,float(p.target if c.target_order=='limit' else op),t,'target_gap',c.target_order=='limit'); closed.add(pair); return
+                # Checked last: an open that already hit a stop, limit or time exit keeps that reason and that fill.
+                if sig and sig.get('exit_long' if p.side==1 else 'exit_short'): close(pair,float(op),t,'signal_exit'); closed.add(pair)
                 return
             p.mae=min(p.mae,p.qty*(lo-p.entry) if p.side==1 else p.qty*(p.entry-hi))
             favorable=cl if new_limit else hi if p.side==1 else lo
@@ -121,7 +129,7 @@ def simulate(c,bundles,signal_overrides=None,progress=lambda x:None,cancel=lambd
                 close(pair,float(p.stop),t+step,reason); closed.add(pair); return
             if breached(adverse,liq): close(pair,float(liq),t+step,'isolated_liquidation'); closed.add(pair); return
             # On ambiguous entry-limit bars, suppress profitable target fills.
-            if not new_limit:
+            if not new_limit and p.target is not None:
                 penetration=p.target*c.limit_penetration_bps/10000 if c.target_order=='limit' else 0
                 hit=hi>=p.target+penetration if p.side==1 else lo<=p.target-penetration
                 if hit:
@@ -138,10 +146,15 @@ def simulate(c,bundles,signal_overrides=None,progress=lambda x:None,cancel=lambd
         for pair in list(positions): manage(pair,phase='open')
         for pair in symbols:
             sig=prepared[pair]['signals'].get(t)
-            if sig: total_signals+=1
-            if pair in positions or pair in closed: continue
+            if sig and sig['side']: total_signals+=1
+            if sig and (sig.get('exit_long') or sig.get('exit_short')): exit_signals+=1
+            # A resting entry order is withdrawn when the strategy asks to be out of that side.
+            if sig and pair in pending and sig.get('exit_long' if pending[pair]['side']==1 else 'exit_short'): pending.pop(pair); rejected['cancelled_by_exit_signal']+=1
+            # Same-boundary re-entry is a reversal: only when this signal itself asked to leave the side that just closed.
+            reversal=bool(sig and pair in closed and sig.get('exit_long' if flattened.get(pair)==1 else 'exit_short'))
+            if pair in positions or (pair in closed and not reversal): continue
             if pair in pending and t>=pending[pair]['expires']: pending.pop(pair); rejected['expired_limit']+=1
-            if sig and pair not in pending:
+            if sig and sig['side'] and pair not in pending:
                 order=dict(sig); order['created']=t
                 order['expires']=t+c.limit_expiry_bars*c.timeframe*60000
                 if c.entry_order=='limit':
@@ -166,7 +179,16 @@ def simulate(c,bundles,signal_overrides=None,progress=lambda x:None,cancel=lambd
             distance=max(order['atr']*c.stop_atr,2*tick)
             stop=round_price(entry-side*distance,tick,side==-1)
             target=round_price(entry+side*distance*c.reward_risk,tick,side==1)
-            if min(entry,stop,target)<=0: rejected['invalid_price']+=1; continue
+            # A strategy may supply its own levels. They must sit on the correct side of the fill, or risk is undefined.
+            if order.get('stop_price') is not None:
+                stop=round_price(order['stop_price'],tick,side==-1)
+                if side*(entry-stop)<=0: rejected['stop_not_beyond_entry']+=1; continue
+                target=round_price(entry+side*abs(entry-stop)*c.reward_risk,tick,side==1)
+            if order.get('target_price') is not None:
+                target=round_price(order['target_price'],tick,side==1)
+                if side*(target-entry)<=0: rejected['target_not_beyond_entry']+=1; continue
+            if order.get('no_target') and order.get('target_price') is None: target=None
+            if min(entry,stop,entry if target is None else target)<=0: rejected['invalid_price']+=1; continue
             stop_fill,_,_=fill_price(stop,-side,c,tick)
             fee_rate=(c.maker_bps if maker else c.taker_bps)/10000
             unit_risk=side*(entry-stop_fill)+entry*fee_rate+stop_fill*c.taker_bps/10000
@@ -184,7 +206,7 @@ def simulate(c,bundles,signal_overrides=None,progress=lambda x:None,cancel=lambd
                 rejected['margin_risk_liquidity_or_minimum']+=1; continue
             entry_fee=quantity*entry*fee_rate
             p=Position(pair,side,quantity,entry,reference,t,stop,target,abs(entry-stop),quantity*entry/c.leverage,
-                       quantity*unit_risk,entry_fee,quantity*slip,quantity*spread,order.get('regime','unknown'),order['atr'],limit_entry=maker)
+                       quantity*unit_risk,entry_fee,quantity*slip,quantity*spread,order.get('regime','unknown'),order['atr'],limit_entry=maker,timed=not order.get('no_time_exit'))
             liq=liquidation_price(p,c,rule.get('maintenance_margin_pct'))
             if c.margin_mode=='isolated' and (stop_fill<=liq if side==1 else stop_fill>=liq):
                 rejected['stop_beyond_liquidation']+=1; continue
@@ -215,6 +237,7 @@ def simulate(c,bundles,signal_overrides=None,progress=lambda x:None,cancel=lambd
       'Reported drawdown uses execution-candle closes; intra-candle account drawdown can be larger.'])
     if c.execution_minutes>1: warnings.append('5-minute execution is less precise: ambiguous stops/targets use adverse ordering.')
     if c.margin_mode=='cross': warnings.append('Cross margin is a conservative stress approximation: simultaneous adverse candle extremes can overstate liquidation risk.')
+    if exit_signals or amended: warnings.append('This strategy sets its own exits. A signal exit or a moved stop or target takes effect at the open after its signal candle closes; an open that already hit a stop, target or time limit keeps that fill.')
     groups={}
     for key in ['pair','side','regime','reason']:
         groups[key]=[]
@@ -223,7 +246,7 @@ def simulate(c,bundles,signal_overrides=None,progress=lambda x:None,cancel=lambd
             groups[key].append({'label':label,'trades':len(subset),'net_pnl':sum(pnls),'win_rate_pct':100*sum(x>0 for x in pnls)/len(pnls),'expectancy':float(np.mean(pnls))})
     price={s:[{'timestamp':int(t.timestamp()*1000)+c.timeframe*60000,'close':float(r.close)} for t,r in v['frame'].resample(f'{c.timeframe}min').last().dropna().iterrows()] for s,v in prepared.items()}
     return {'config':c.model_dump(mode='json'),'metrics':stats,'equity':equity,'trades':trades,'groups':groups,'price':price,
-      'warnings':list(dict.fromkeys(warnings)),'data_reports':reports,'diagnostics':{'signals':total_signals,'rejected':dict(rejected),'peak_open_positions':peak_open,'ambiguous_policy':'Stop before target; limit-entry bar cannot take profit; trailing changes effective next bar','priority':symbols}}
+      'warnings':list(dict.fromkeys(warnings)),'data_reports':reports,'diagnostics':{'signals':total_signals,'exit_signals':exit_signals,'amended_levels':amended,'rejected':dict(rejected),'peak_open_positions':peak_open,'ambiguous_policy':'Stop before target; limit-entry bar cannot take profit; trailing changes effective next bar','priority':symbols}}
 
 def run_backtest(c,progress=lambda x:None,cancel=lambda:False):
     bundles={}

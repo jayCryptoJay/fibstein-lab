@@ -48,6 +48,16 @@ On real JTOUSDT data with the exact engine, using fixture development evidence b
 
 Evaluation through the real gates cannot be exercised yet: it requires the overfitting checks, which are not built.
 
+## Signal exits and per-signal levels (5 October 2026)
+
+Validated in Linux with Python 3.11 and 3.12. Native Windows was not independently tested.
+
+183 tests pass. `engine.py` and `strategies.py` changed, so the engine fingerprint changed.
+
+The change is additive: a strategy that returns a plain Series behaves exactly as before. This was checked two ways. On real JTOUSDT data, 1 October 2024 to 1 February 2025, 27 scenarios across the three built-in strategies (market and limit orders, isolated and cross margin, 5m, 15m and 1h signals, 1m and 5m execution, trailing and breakeven stops, cost stress, estimated funding) produced 5,105 trades whose trade lists, equity curves and metrics hash identically on the previous engine and this one. And `tests/test_engine_golden.py` pins three synthetic scenarios to numbers recorded from the previous engine.
+
+New behaviour is covered by unit tests with hand-calculable prices: signal exit at the next open with the cost identity intact, reversal on one open, strategy-supplied stops and targets and their rejection on the wrong side of the fill, entries with no target or no time limit, stops and targets amended while a position is open, and a resting limit entry withdrawn by an exit signal. The look-ahead check now compares exits and price levels as well as entries.
+
 ## Remaining limitations
 
 Candle-based fills cannot reproduce the order book, exact intrabar ordering or exchange latency. Liquidation calculations use disclosed approximations, including trade-price rather than historical mark-price data. Funding timestamps are aligned to execution boundaries. Exchange rules require user overrides when historical rules are unavailable. Starter strategies have not been established as profitable. See the README and in-app methodology before interpreting results.

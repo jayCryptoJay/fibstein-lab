@@ -62,14 +62,28 @@ def vwap_reversion(f,c):
 
 REGISTRY={'trend_pullback':trend_pullback,'breakout_retest':breakout_retest,'vwap_reversion':vwap_reversion}
 
+PLAN_FLAGS=['exit_long','exit_short','no_target','no_time_exit']
+PLAN_PRICES=['stop_price','target_price','amend_stop','amend_target']
+
 def register_strategy(key,name,rule,function):
-    """Register trusted local Python code; function(features, config) -> Series[-1,0,1]."""
+    """Register trusted local Python code; function(features, config) -> Series[-1,0,1], or a plan frame.
+
+    A plan frame has a `side` column of entries (-1, 0, 1) and any of these, all on the feature index:
+    exit_long / exit_short (close that side at the next open), stop_price / target_price (levels for an
+    entry on this bar), amend_stop / amend_target (new levels for the open position), no_target and
+    no_time_exit (this entry has no profit target / is not closed by the time limit).
+    """
     if key in REGISTRY: raise ValueError('Strategy key already registered.')
     REGISTRY[key]=function; STRATEGIES[key]={'name':name,'rule':rule}
 
 def prepare(raw,c):
     if c.strategy not in REGISTRY: raise ValueError(f'Unknown strategy: {c.strategy}')
-    f=features(raw,c); side=REGISTRY[c.strategy](f.copy(),c)
+    f=features(raw,c); out=REGISTRY[c.strategy](f.copy(),c); plan=None
+    if isinstance(out,pd.DataFrame):
+        if 'side' not in out or not out.index.equals(f.index) or set(out.columns)-{'side',*PLAN_FLAGS,*PLAN_PRICES}:
+            raise ValueError('A strategy plan needs an aligned `side` column and only known plan columns.')
+        plan=out; side=out['side']
+    else: side=out
     if not isinstance(side,pd.Series) or not side.index.equals(f.index) or not side.isin([-1,0,1]).all():
         raise ValueError('Strategy must return an aligned Series containing only -1, 0, 1.')
     valid=f[['fast','slow','atr','rsi']].notna().all(axis=1)&(f.atr>0)
@@ -79,4 +93,18 @@ def prepare(raw,c):
     if c.direction=='short': side=side.clip(upper=0)
     f['side']=side
     signals={int(t.timestamp()*1000):{'side':int(r.side),'atr':float(r.atr),'reference':float(r.close),'regime':r.regime} for t,r in f[f.side!=0].iterrows()}
+    if plan is not None:
+        # Entry filters above gate entries only. A strategy's own exits and levels are never filtered away.
+        flags={k:plan[k].fillna(False).astype(bool) for k in PLAN_FLAGS if k in plan}
+        prices={k:pd.to_numeric(plan[k],errors='coerce') for k in PLAN_PRICES if k in plan}
+        for k,v in prices.items():
+            if (v.dropna()<=0).any() or not np.isfinite(v.dropna()).all(): raise ValueError(f'Plan column {k} must hold positive finite prices or NaN.')
+        for k,v in {**flags,**prices}.items(): f[k]=v
+        active=pd.concat([f.side!=0,*flags.values(),*[v.notna() for v in prices.values()]],axis=1).any(axis=1)
+        for t,r in f[active].iterrows():
+            s=signals.setdefault(int(t.timestamp()*1000),{'side':0,'atr':float(r.atr),'reference':float(r.close),'regime':r.regime})
+            for k in flags:
+                if r[k]: s[k]=True
+            for k in prices:
+                if pd.notna(r[k]): s[k]=float(r[k])
     return signals,f
