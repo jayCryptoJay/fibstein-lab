@@ -28,13 +28,12 @@ backend/
   experiments.py   Walk-forward, grid, compare, cost-stress.
   verdict.py       Turns a metrics dict into one plain-language sentence.
   runcard.py       Turns a saved run into a JSON card, a Markdown digest and fixed-rule findings. Pure.
-  holdout.py       Immutable final windows, atomic attempts, private exact-engine evaluation.
   registry.py      Research memory: strategies, studies, trials, gates, journal. Never deletes.
   causality.py     Look-ahead check for any registered strategy.
   lab.py           Command line over the three above: python -m backend.lab --help
   server.py        HTTP API, job queue, run persistence.
 frontend/src/      React. Settings (left rail), Results (main), Views (data/compare/docs).
-tests/             143 test cases (102 baseline + 10 selection + 31 holdout/versioning cases). Full-suite verification is required before a PR is ready.
+tests/             115 tests. All must pass before any commit.
 presets/           Saved configurations, including the bundled sample.
 data/              Cached candles. NOT tracked in git. See "Data" below.
 ```
@@ -43,7 +42,7 @@ data/              Cached candles. NOT tracked in git. See "Data" below.
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests -q     # expected collection: 143 cases
+.venv/bin/python -m pytest tests -q     # expect: 115 passed
 .venv/bin/python launch.py              # serves the app
 ```
 
@@ -167,10 +166,9 @@ match the file you are editing rather than reformatting it. Comments explain
 *why*, never *what* — the existing one-line comments above tricky blocks in
 `engine.py` are the model. No emoji in code, commits, or UI copy.
 
-Every change: run `pytest tests -q`. On Python 3.12, 37 new unittest cases passed
-and 4 API cases were skipped because FastAPI is unavailable. The full 143-case
-pytest suite is unverified because pinned pytest/FastAPI dependencies could not
-be installed. Keep both phase-2 PRs draft until their full suites pass.
+Every change: run `pytest tests -q` and confirm 115 passing before you commit. If your
+environment cannot install the pinned dependencies, say so in the pull request and
+keep it draft until someone has run the full suite.
 
 Before proposing a new strategy or variant, read the journal
 (`python -m backend.lab journal`) so an archived idea is not retried, and read

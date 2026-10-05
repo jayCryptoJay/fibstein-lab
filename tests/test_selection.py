@@ -2,7 +2,7 @@ import json, tempfile, unittest
 from pathlib import Path
 from unittest.mock import patch
 import pandas as pd
-from backend import experiments, registry, runcard
+from backend import experiments, registry, runcard, verdict
 from backend.config import Config
 from backend.engine import metrics, simulate
 
@@ -71,7 +71,10 @@ class SelectionTests(unittest.TestCase):
             registry.record_run(db,r)
             self.assertEqual(registry.count_trials(db,[self.c.strategy]),2)
         card=runcard.card(r)
-        self.assertIsNone(card['splits'][0]['metrics'])
+        # A cash fold still reports its best-ranked training candidate, marked as rejected.
+        self.assertTrue(card['splits'][0]['best_rejected'])
+        self.assertEqual((card['splits'][0]['metrics']['net_pnl'],card['splits'][0]['metrics']['expectancy_r']),(-10,-.2))
+        self.assertIn('fold 1 training (best rejected)',runcard.digest(card))
         self.assertEqual(card['splits'][1]['metrics']['net_pnl'],0)
         self.assertEqual(card['splits'][1]['status'],'no_trade')
         ids=[f['id'] for f in card['findings']]
@@ -79,6 +82,28 @@ class SelectionTests(unittest.TestCase):
         self.assertNotIn('selection_stability',ids)
         self.assertIn('stayed in cash',runcard.digest(card))
         json.dumps(card,allow_nan=False)
+
+    def test_all_cash_verdict_says_why_nothing_traded(self):
+        r,_=self.run_search({1:(-10,-.2,50),2:(-20,-.4,50)},folds=2)
+        v=runcard.card(r)['verdict']
+        self.assertEqual((v['tone'],v['evidence']),('empty','Held out across 2 folds, 2 in cash'))
+        self.assertIn('no candidate earned a test',v['headline'])
+        self.assertNotIn('never triggered',v['headline']+v['detail'])
+        # A run with no cash folds and no trades keeps the original wording.
+        self.assertIn('never triggered',verdict.read(r['metrics'],out_of_sample=True,folds=2)['detail'])
+        self.assertEqual(verdict.read(r['metrics'],out_of_sample=True,folds=1)['evidence'],'Held out across 1 fold')
+
+    def test_cash_fold_finding_names_too_few_trades(self):
+        # Profitable in training but under the 20-trade minimum: cash, and the card says which reason.
+        r,_=self.run_search({1:(10,.2,5),2:(-20,-.4,50)})
+        f=next(x for x in runcard.findings(r) if x['id']=='no_trade_folds')
+        self.assertEqual((f['data']['folds'],f['data']['too_few_trades']),([1],[1]))
+        self.assertIn('1 held-out fold stayed in cash',f['text']); self.assertIn('too few trades',f['text'])
+        r,_=self.run_search({1:(-10,-.2,50),2:(-20,-.4,50)})
+        self.assertEqual(next(x for x in runcard.findings(r) if x['id']=='no_trade_folds')['data']['too_few_trades'],[])
+
+    def test_card_never_shows_negative_zero(self):
+        self.assertEqual(str(runcard.r(-0.0)),'0.0'); self.assertEqual(runcard.r(-1.234),-1.23); self.assertIsNone(runcard.r(None))
 
     def test_mixed_folds_keep_only_actual_selections(self):
         r,_=self.run_search({1:(10,.1,50)},folds=2)

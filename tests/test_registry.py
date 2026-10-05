@@ -1,4 +1,4 @@
-import gzip,hashlib,json
+import gzip,hashlib,inspect,json
 import pytest
 from backend.config import Config
 from backend.engine import metrics
@@ -100,6 +100,10 @@ def test_evidence_is_the_latest_held_out_run_not_the_best(db):
     registry.record_run(db,walkforward('b'*16,created='2025-03-05T00:00:00+00:00',net=-30.))
     assert registry.gates(db,'trend_pullback',current_engine=ENGINE)['evidence_run']=='b'*16
     assert not registry.gates(db,'trend_pullback',current_engine=ENGINE)['candidate_ready']
+    # The older winning run cannot be named to get past the latest failure.
+    with pytest.raises(ValueError,match='profitable_after_costs'): registry.promote(db,'trend_pullback',current_engine=ENGINE)
+    for fn in (registry.evidence,registry.gates,registry.promote): assert 'run' not in inspect.signature(fn).parameters
+    assert registry.get(db,'trend_pullback')['status']=='draft'
 
 def test_engine_change_invalidates_evidence(db):
     registry.record_run(db,walkforward('a'*16))

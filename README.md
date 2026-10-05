@@ -78,7 +78,7 @@ CSV candles: `timestamp,open,high,low,close,volume`; one-minute candle OPEN time
 
 Compare runs all three templates with the current settings. Stress re-runs the engine with 1×, 2×, 3× spread/slippage; funding and fees are not multiplied. Recomputed position sizing/fills can mean net returns are not strictly monotonic.
 
-Grid search tests at most 12 candidates on the first 60% of dates, ranks eligible candidates by `net_return_pct - max_drawdown_pct`, and runs the selected candidate on the untouched final 40%. Walk-forward divides that final portion into 1–5 consecutive test windows, expanding training before each one. Test folds start flat and compound their equity. Minimum training trade count is configurable. This is bounded exploratory selection, not a claim that the best mathematical strategy has been found.
+Grid search tests at most 12 candidates on the first 60% of dates, ranks eligible candidates by training `expectancy_r`, and runs the selected candidate on the untouched final 40%. A candidate is eligible only with the minimum training trade count and positive training net P&L and expectancy; if none qualifies, that test window stays in cash and is reported as such. Walk-forward divides that final portion into 1–5 consecutive test windows, expanding training before each one. Test folds start flat and compound their equity. Minimum training trade count is configurable. This is bounded exploratory selection, not a claim that the best mathematical strategy has been found.
 
 Run tests after installing `requirements-dev.txt`:
 

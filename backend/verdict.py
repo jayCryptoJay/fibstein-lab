@@ -11,7 +11,7 @@ def money(x, unit='USDT'):
     return f'{x:,.2f} {unit}'
 
 
-def read(metrics, out_of_sample=False, folds=None):
+def read(metrics, out_of_sample=False, folds=None, cash_folds=0):
     """Return {tone, headline, detail, evidence, cost_share, breakeven}.
 
     tone drives colour only. headline is the whole story in one sentence;
@@ -31,13 +31,22 @@ def read(metrics, out_of_sample=False, folds=None):
 
     evidence = ('Held out' if out_of_sample else 'In-sample')
     if out_of_sample and folds:
-        evidence = f'Held out across {folds} folds'
+        evidence = f'Held out across {folds} fold' + ('s' if folds != 1 else '')
+        if cash_folds: evidence += f', {cash_folds} in cash'
 
     def result(tone, headline, detail):
         return {'tone': tone, 'headline': headline, 'detail': detail, 'evidence': evidence,
                 'trades': n, 'raw_pnl': raw, 'costs': costs, 'net_pnl': net,
                 'cost_share': cost_share, 'breakeven': breakeven,
                 'out_of_sample': out_of_sample}
+
+    # A fold stays in cash when no candidate earned its test in training. That is a decision,
+    # not a silent signal, so it must not read as "the rules never triggered".
+    if n == 0 and cash_folds:
+        return result('empty', 'Nothing was traded: no candidate earned a test.',
+                      'No candidate made money in training with enough trades, so every held-out '
+                      'window stayed in cash. The idea did not qualify. Loosening the rule until '
+                      'something trades would be choosing on hope, not evidence.')
 
     if n == 0:
         return result('empty', 'No trades were taken.',
