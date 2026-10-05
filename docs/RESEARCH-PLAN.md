@@ -9,7 +9,7 @@ the brief; the rest is what running it found and what has been built since.
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Run cards, findings, command line, registry with gates and archive reasons, Library view, look-ahead check, Pine conversion guide | **Built** (2 October 2026). 102 tests. See `RESEARCH-MEMORY.md`, `PINE-CONVERSION.md`. |
-| 2 | Parallel runs, Optuna studies, `strategy_params`, locked holdout, overfitting gates, the two selection fixes | Steps 1 and 2 approved. Step 1 implemented for review; step 2 next. Parameters, parallel runs, Optuna and overfitting gates remain unapproved. |
+| 2 | Parallel runs, Optuna studies, `strategy_params`, locked holdout, overfitting gates, the two selection fixes | Steps 1 and 2 (selection fixes; versioning and final holdout) approved and implemented, 5 October 2026: 115 and 157 tests, verified on Python 3.11 and 3.12. `strategy_params`, parallel runs, Optuna and the overfitting gates are not approved yet. |
 | 3 | Signal exits, long/short flips, per-signal stop and target prices, TradingView parity harness, optional faster engine | Not started. Needs approval: touches `engine.py`. |
 | 4 | MCP server with a budgeted autonomous loop; XGBoost meta-labeling | Optional. |
 
@@ -17,8 +17,8 @@ Phase 1 decisions that differ from, or sharpen, the plan as first written:
 
 - **Promotion is locked until phase 2.** `draft → candidate` works today on held-out
   evidence. `candidate → promoted` also needs the overfitting checks and the locked
-  holdout, which do not exist yet, so those gates report *pending* and promotion
-  refuses. There is no override.
+  holdout. The holdout service is now implemented, but refuses evaluation until
+  the still-pending overfitting checks pass. Promotion refuses. There is no override.
 - **"Still profitable at 2× costs" is a linear estimate** from the held-out run
   (raw result minus twice total costs), not a rerun. A true rerun at doubled costs
   on the held-out windows belongs with the experiments work in phase 2.
@@ -30,13 +30,13 @@ Things noticed while building, left alone because they sit in protected files:
 
 - The engine fingerprint includes `custom_strategies.py`, so adding any custom,
   Pine or AI strategy marks every strategy's earlier evidence as stale. The AI loop
-  in phase 4 will need per-strategy versioning.
+  now has per-strategy version identities, conservatively bound to this same raw digest.
 - A walk-forward result inherits the last fold's "Fewer than 100 trades" warning
   even when the held-out total is over 100.
 - The first selection issue in `AGENTS.md` shows up on real data: on JTOUSDT,
   1 October 2024 to 1 February 2025, every candidate lost in training in all three
   folds and the least-bad one was traded anyway. The card now reports this as a
-  finding; fixing it is phase 2.
+  finding; phase 2 step 1 now keeps these folds in cash.
 
 ## The brief
 
@@ -198,3 +198,26 @@ Step 1 verification: 10 new standard-library unittest cases pass on Python 3.12,
 including exact-engine synthetic cash folds. Full pytest verification remains
 pending because pinned test/server dependencies are unavailable in this environment.
 No real-market data rerun and no Windows execution were performed.
+
+## Phase 2, step 2 verification and review decisions
+
+Version identities, migrations, locked final windows and lineage-wide attempt
+counting are implemented. The step-2 PR is stacked on the separate step-1 branch.
+No Optuna dependency or work from subsequent steps is included.
+
+Expected test inventory: 143 (102 baseline, 10 step-1 cases, 31 step-2 cases).
+Local Python 3.12 verification: 37 new cases passed, 4 API cases skipped for missing
+FastAPI. `python -m pytest tests -q` fails before collection: pytest is unavailable
+and pinned dependency installation is blocked. No GitHub workflow run was
+available for the step-1 commit when checked. Both PRs must remain draft until
+their full suites pass. No Windows or real market-data verification was performed.
+The exact engine was exercised on synthetic candles for cash folds and holdout.
+
+Owner review: final settings are the last development fold's training winner,
+with the original starting balance. The final criterion is at least 100 trades,
+positive finite net P&L and expectancy R, and zero liquidations. All other
+promotion gates must pass before a final attempt can be consumed. Code versions
+are conservative: an unrelated custom-code edit still invalidates evidence.
+Reserved periods cannot be reused even by another strategy; access guards cover
+the supported API/CLI and are not a sandbox against local code/database edits.
+See RESEARCH-MEMORY.md for the precise protocol and commands.

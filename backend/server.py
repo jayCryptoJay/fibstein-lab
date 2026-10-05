@@ -13,7 +13,7 @@ from .data import ROOT,inventory,download_archive,download_ccxt,import_csv,utc
 from .engine import run_backtest
 from .experiments import experiment
 from .verdict import read as read_verdict
-from . import registry,runcard
+from . import registry,runcard,holdout
 
 STATE=ROOT/'workspace'; STATE.mkdir(exist_ok=True)
 RESULTS=STATE/'runs'; RESULTS.mkdir(exist_ok=True)
@@ -42,6 +42,8 @@ async def local_write_guard(request:Request,call_next):
     return await call_next(request)
 
 def persist_result(result,kind):
+    if kind=='holdout': raise ValueError('Final holdouts cannot be saved or exported as ordinary runs.')
+    holdout.research_access(Config.model_validate(result['config']),DB)
     rid=uuid.uuid4().hex[:16]; created=datetime.now(timezone.utc).isoformat()
     result.update({'id':rid,'created':created,'kind':kind,'engine_version':'1.0.0'})
     # Single chokepoint: every mode that reports headline metrics gets a plain-language reading.
@@ -50,6 +52,7 @@ def persist_result(result,kind):
         result['verdict']=read_verdict(result['metrics'],out_of_sample=held_out,
                                        folds=len(result.get('folds',[])) or None,cash_folds=runcard.cash_folds(result))
     result['engine_sha256']=registry.engine_fingerprint(ROOT)
+    result['strategy_version']=registry.strategy_version(result['config']['strategy'],result['engine_sha256'])
     with gzip.open(RESULTS/f'{rid}.json.gz','wt') as f: json.dump(result,f,allow_nan=False)
     # One transaction: a run is never saved without also being counted as a study and its trials.
     with registry.session(DB) as db:
@@ -89,6 +92,7 @@ class RunRequest(BaseModel):
 def run(body:RunRequest):
     if body.mode not in ('backtest','compare','stress','grid','walkforward'): raise HTTPException(400,'Unknown experiment mode.')
     def execute(progress,cancel):
+        holdout.research_access(body.config,DB)
         result=run_backtest(body.config,progress,cancel) if body.mode=='backtest' else experiment(body.config,body.mode,body.grid,body.folds,body.min_trades,progress,cancel)
         return {'run_id':persist_result(result,body.mode)}
     return launch(execute)
@@ -97,6 +101,7 @@ def run(body:RunRequest):
 def download(config:Config):
     if config.source=='csv': raise HTTPException(400,'Use CSV import for this source.')
     def execute(progress,cancel):
+        # Fetching verified candles shows no price and runs nothing, so it is not research access.
         import pandas as pd
         warmup=max(config.htf_ema*4*1.5/24,config.ema_slow*config.timeframe*2/1440,3)
         begin=(utc(config.start)-pd.Timedelta(days=warmup)).date()
@@ -164,7 +169,8 @@ def run_card(rid:str): return card_of(rid)
 def run_digest(rid:str): return Response(runcard.digest(card_of(rid)),media_type='text/plain; charset=utf-8')  # Markdown, served as text so a browser shows it.
 
 def strategy_detail(db,key):
-    return {**registry.require(db,key),'gates':registry.gates(db,key),'studies':registry.studies(db,key,20),'journal':registry.journal(db,key,50)}
+    return {**registry.require(db,key),'gates':registry.gates(db,key),'versions':registry.versions(db,key),
+            'holdout':registry.holdout_status(db,key),'holdout_windows':registry.holdout_windows(db,key),'studies':registry.studies(db,key,20),'journal':registry.journal(db,key,50)}
 
 @app.get('/api/library')
 def library():
@@ -211,6 +217,36 @@ def act(key:str,body:StrategyAction):
             return strategy_detail(db,key)
     except ValueError as e: raise HTTPException(400,str(e)) from e
 
+class HoldoutRequest(BaseModel):
+    strategy:str
+    start:str
+    end:str
+
+@app.post('/api/holdouts')
+def lock_holdout(body:HoldoutRequest):
+    try: return holdout.lock(body.strategy,body.start,body.end,DB,RESULTS)
+    except (ValueError,OSError) as e: raise HTTPException(400,str(e)) from e
+
+@app.get('/api/holdouts/{key}')
+def holdout_status(key:str):
+    with registry.session(DB) as db:
+        try: registry.require(db,key)
+        except ValueError as e: raise HTTPException(404,str(e)) from e
+        return registry.holdout_status(db,key)
+
+@app.post('/api/holdouts/{wid}/evaluate')
+def evaluate_holdout(wid:str):
+    return launch(lambda progress,cancel:holdout.evaluate(wid,DB,cancel=cancel))
+
+@app.post('/api/holdouts/{wid}/fetch')
+def fetch_holdout(wid:str):
+    return launch(lambda progress,cancel:holdout.fetch(wid,DB,progress,cancel))
+
+@app.post('/api/holdouts/{wid}/release')
+def release_holdout(wid:str):
+    try: return holdout.release(wid,DB)
+    except ValueError as e: raise HTTPException(400,str(e)) from e
+
 @app.get('/api/presets')
 def presets():
     with sqlite3.connect(DB) as db: rows=db.execute('SELECT * FROM presets ORDER BY name').fetchall()
@@ -236,7 +272,9 @@ class ImportRequest(BaseModel):
 @app.post('/api/import')
 def import_data(body:ImportRequest):
     if any(j['status'] in ('queued','running') for j in JOBS.values()): raise HTTPException(409,'Finish the running job before changing its data.')
-    try: return import_csv(body.pair,body.candles,body.funding)
+    try:
+        holdout.import_guard(body.candles,body.funding,DB)
+        return import_csv(body.pair,body.candles,body.funding)
     except Exception as e: raise HTTPException(400,str(e)) from e
 
 if (ROOT/'custom_strategies.py').exists():

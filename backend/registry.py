@@ -41,7 +41,15 @@ CREATE TABLE IF NOT EXISTS holdout_ledger (id INTEGER PRIMARY KEY, strategy TEXT
 CREATE TABLE IF NOT EXISTS journal (id INTEGER PRIMARY KEY, strategy TEXT NOT NULL, created TEXT NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS trials_strategy ON trials (strategy);
 CREATE INDEX IF NOT EXISTS studies_strategy ON studies (strategy, created);
+CREATE TABLE IF NOT EXISTS strategy_versions (id TEXT PRIMARY KEY, strategy TEXT NOT NULL,
+  engine_sha256 TEXT NOT NULL, created TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS holdout_windows (id TEXT PRIMARY KEY, strategy TEXT NOT NULL, strategy_version TEXT NOT NULL,
+  engine_sha256 TEXT NOT NULL, evidence_run TEXT NOT NULL, window_start TEXT NOT NULL, window_end TEXT NOT NULL,
+  config TEXT NOT NULL, created TEXT NOT NULL, released TEXT);
+CREATE TABLE IF NOT EXISTS research_access (id INTEGER PRIMARY KEY, window_start TEXT NOT NULL, window_end TEXT NOT NULL,
+  UNIQUE (window_start, window_end));
 '''
+SCHEMA_VERSION = 2   # Bump when connect() must migrate again; an up-to-date file is opened without a write lock.
 
 
 def now(): return datetime.now(timezone.utc).isoformat()
@@ -50,6 +58,25 @@ def now(): return datetime.now(timezone.utc).isoformat()
 def connect(path=None):
     path = Path(path or DB); path.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(path); db.row_factory = sqlite3.Row; db.executescript(SCHEMA)
+    if db.execute('PRAGMA user_version').fetchone()[0] >= SCHEMA_VERSION: return db
+    # Old evidence keeps its original digest; migrations must not bless it as current code.
+    with db:
+        db.execute('BEGIN IMMEDIATE')
+        for table, columns in {'studies': {'strategy_version': 'TEXT'}, 'trials': {'strategy_version': 'TEXT'}, 'holdout_windows': {'released': 'TEXT'},
+                               'holdout_ledger': {'strategy_version': 'TEXT', 'window_id': 'TEXT', 'status': "TEXT NOT NULL DEFAULT 'legacy'", 'evidence_run': 'TEXT'}}.items():
+            existing = {r['name'] for r in db.execute(f'PRAGMA table_info({table})')}
+            for column, declaration in columns.items():
+                if column not in existing: db.execute(f'ALTER TABLE {table} ADD COLUMN {column} {declaration}')
+        for r in db.execute('SELECT id,strategy,engine_sha256 FROM studies WHERE strategy_version IS NULL').fetchall():
+            v = ensure_version(db, r['strategy'], r['engine_sha256'])
+            db.execute('UPDATE studies SET strategy_version=? WHERE id=?', (v, r['id']))
+        for r in db.execute('SELECT t.rowid,t.strategy,s.engine_sha256 FROM trials t JOIN studies s ON s.id=t.study WHERE t.strategy_version IS NULL').fetchall():
+            db.execute('UPDATE trials SET strategy_version=? WHERE rowid=?', (ensure_version(db, r['strategy'], r['engine_sha256']), r['rowid']))
+        db.execute('CREATE UNIQUE INDEX IF NOT EXISTS holdout_once ON holdout_ledger(strategy_version) WHERE strategy_version IS NOT NULL')
+        db.execute('CREATE UNIQUE INDEX IF NOT EXISTS holdout_window_once ON holdout_ledger(window_id) WHERE window_id IS NOT NULL')
+        # One live lock per strategy version; a released lock no longer counts.
+        db.execute('CREATE UNIQUE INDEX IF NOT EXISTS holdout_window_live ON holdout_windows(strategy_version) WHERE released IS NULL')
+        db.execute(f'PRAGMA user_version={SCHEMA_VERSION}')
     return db
 
 
@@ -70,6 +97,17 @@ def engine_fingerprint(root=None):
     return hashlib.sha256(source).hexdigest()
 
 
+def strategy_version(key, engine):
+    """Conservative per-strategy identity bound to the byte-exact engine, including custom code."""
+    return hashlib.sha256(json.dumps([key, engine or 'unknown'], separators=(',', ':')).encode()).hexdigest()
+
+
+def ensure_version(db, key, engine):
+    version = strategy_version(key, engine)
+    db.execute('INSERT OR IGNORE INTO strategy_versions VALUES (?,?,?,?)', (version, key, engine or 'unknown', now()))
+    return version
+
+
 def fingerprint(config, parameters=None):
     """One configuration is one trial however many times it is rerun."""
     merged = {**config, **(parameters or {})}
@@ -87,7 +125,9 @@ def summary(m):
 def trials_of(result):
     """(strategy, parameters, role, metrics) for every configuration a run evaluated."""
     c = result['config']; kind = result['kind']
-    if kind in ('compare', 'stress'):
+    if kind == 'holdout':
+        yield c['strategy'], {}, 'holdout', {}
+    elif kind in ('compare', 'stress'):
         rows = result.get('rows') or []
         if kind == 'stress':
             # Cost multipliers are assumptions about one configuration, not rival candidates.
@@ -166,11 +206,15 @@ def record_run(db, result):
     if db.execute('SELECT 1 FROM studies WHERE id=?', (rid,)).fetchone(): return 0
     c = result['config']; kind = result['kind']; created = result.get('created') or now(); written = 0
     ensure(db, c['strategy'])
-    db.execute('INSERT INTO studies VALUES (?,?,?,?,?,?,?,?)', (rid, c['strategy'], kind, created, result.get('engine_sha256'),
-               int(kind in HELD_OUT_KINDS), json.dumps(c), json.dumps(result.get('metrics') or {})))
+    version = ensure_version(db, c['strategy'], result.get('engine_sha256'))
+    db.execute('INSERT INTO studies (id,strategy,kind,created,engine_sha256,held_out,config,metrics,strategy_version) VALUES (?,?,?,?,?,?,?,?,?)',
+               (rid, c['strategy'], kind, created, result.get('engine_sha256'), int(kind in HELD_OUT_KINDS), json.dumps(c),
+                json.dumps({} if kind == 'holdout' else result.get('metrics') or {}), version))
     for strategy, parameters, role, metrics in trials_of(result):
         ensure(db, strategy)
-        db.execute('INSERT OR IGNORE INTO trials VALUES (?,?,?,?,?,?,?)', (rid, fingerprint(c, parameters), strategy, role, json.dumps(parameters), json.dumps(metrics), created))
+        db.execute('INSERT OR IGNORE INTO trials (study,fingerprint,strategy,role,parameters,metrics,created,strategy_version) VALUES (?,?,?,?,?,?,?,?)',
+                   (rid, fingerprint(c, parameters), strategy, role, json.dumps(parameters), json.dumps(metrics), created,
+                    ensure_version(db, strategy, result.get('engine_sha256'))))
         written += 1
     return written
 
@@ -191,7 +235,7 @@ def count_trials(db, keys, study=None):
     """Distinct configurations tried: within one run if `study` is given, else across the listed strategies."""
     if study: return db.execute('SELECT COUNT(*) FROM trials WHERE study=?', (study,)).fetchone()[0]
     marks = ','.join('?' * len(keys))
-    return db.execute(f'SELECT COUNT(DISTINCT fingerprint) FROM trials WHERE strategy IN ({marks})', keys).fetchone()[0]
+    return db.execute(f"SELECT COUNT(DISTINCT COALESCE(strategy_version,'unknown') || ':' || fingerprint) FROM trials WHERE strategy IN ({marks})", keys).fetchone()[0]
 
 
 def evidence(db, key):
@@ -222,8 +266,9 @@ def gates(db, key, current_engine=None):
         gate('engine_unchanged', 'candidate', 'pass' if e['engine_sha256'] == current else 'fail',
              'Evidence was produced by the current engine code.' if e['engine_sha256'] == current else 'The engine code changed after this evidence was produced; rerun the walk-forward.')
     gate('overfitting_checks', 'promoted', 'pending', 'Deflated Sharpe ratio and probability of backtest overfitting are not implemented yet (plan phase 2).')
-    used = db.execute('SELECT passed FROM holdout_ledger WHERE strategy=? ORDER BY created DESC LIMIT 1', (key,)).fetchone()
-    if used is None: gate('final_holdout', 'promoted', 'pending', 'No locked final holdout has been evaluated for this strategy (plan phase 2).')
+    used = db.execute('SELECT passed FROM holdout_ledger WHERE strategy=? AND strategy_version=? AND evidence_run=? ORDER BY id DESC LIMIT 1',
+                      (key, strategy_version(key, current_engine or engine_fingerprint()), e['id'] if e else None)).fetchone()
+    if used is None: gate('final_holdout', 'promoted', 'pending', 'No final holdout has been evaluated for this strategy version and this evidence run.')
     else: gate('final_holdout', 'promoted', 'pass' if used['passed'] else 'fail', 'Locked final holdout ' + ('passed.' if used['passed'] else 'failed.'))
     return {'strategy': key, 'evidence_run': e['id'] if e else None, 'gates': out,
             'candidate_ready': all(g['status'] == 'pass' for g in out if g['needed_for'] == 'candidate'),
@@ -283,7 +328,11 @@ def journal(db, key=None, limit=200):
 
 def studies(db, key, limit=50):
     return [{**dict(r), 'metrics': json.loads(r['metrics'])} for r in
-            db.execute('SELECT id,kind,created,held_out,engine_sha256,metrics FROM studies WHERE strategy=? ORDER BY created DESC LIMIT ?', (key, limit))]
+            db.execute('SELECT id,kind,created,held_out,engine_sha256,strategy_version,metrics FROM studies WHERE strategy=? ORDER BY created DESC LIMIT ?', (key, limit))]
+
+
+def versions(db, key):
+    return [dict(r) for r in db.execute('SELECT * FROM strategy_versions WHERE strategy=? ORDER BY created DESC', (key,))]
 
 
 def context(db, result, current_engine=None):
@@ -295,7 +344,8 @@ def context(db, result, current_engine=None):
     out = {'strategy': {k: row[k] for k in ['key', 'name', 'status', 'origin', 'parent', 'hypothesis', 'archive_reason']} if row else None,
            'selection': {'study_trials': study_trials, 'strategy_trials': count_trials(db, [key]), 'lineage_trials': lineage_trials,
                          'lineage': lineage, 'label': f'best of {max(lineage_trials, 1)}'},
-           'parent': None, 'holdout': {'status': 'not_configured', 'uses': db.execute('SELECT COUNT(*) FROM holdout_ledger WHERE strategy=?', (key,)).fetchone()[0]},
+           'parent': None, 'holdout': holdout_status(db, key, current_engine),
+           'strategy_version': strategy_version(key, result.get('engine_sha256')),
            'engine_current': (result['engine_sha256'] == (current_engine or engine_fingerprint())) if result.get('engine_sha256') else None}
     if row and row['parent'] and result.get('metrics'):
         p = db.execute('SELECT * FROM studies WHERE strategy=? AND kind=? ORDER BY created DESC LIMIT 1', (row['parent'], result['kind'])).fetchone()
@@ -304,4 +354,23 @@ def context(db, result, current_engine=None):
             delta = {k: (m[k] - pm[k]) if m.get(k) is not None and pm.get(k) is not None else None for k in ['net_return_pct', 'max_drawdown_pct', 'expectancy_r', 'trade_count']}
             out['parent'] = {'key': row['parent'], 'run': p['id'], 'delta': {k: round(v, 3) if v is not None else None for k, v in delta.items()},
                              'comparable': all(pc.get(k) == c.get(k) for k in ['pairs', 'start', 'end', 'timeframe'])}
+    return out
+
+
+def holdout_status(db, key, current_engine=None):
+    keys = family(db, key); marks = ','.join('?' * len(keys))
+    uses = db.execute(f'SELECT COUNT(*) FROM holdout_ledger WHERE strategy IN ({marks})', keys).fetchone()[0]
+    version = strategy_version(key, current_engine or engine_fingerprint())
+    row = db.execute('SELECT passed FROM holdout_ledger WHERE strategy_version=?', (version,)).fetchone()
+    locked = db.execute('SELECT 1 FROM holdout_windows WHERE strategy_version=? AND released IS NULL', (version,)).fetchone()
+    return {'status': ('passed' if row['passed'] else 'failed') if row else 'locked' if locked else 'not_configured', 'uses': uses}
+
+
+def holdout_windows(db, key):
+    """Every reservation for a strategy, newest first: dates and state only, never a result beyond pass or fail."""
+    out = []
+    for w in db.execute('SELECT id,strategy_version,window_start,window_end,created,released FROM holdout_windows WHERE strategy=? ORDER BY created DESC', (key,)):
+        used = db.execute('SELECT status FROM holdout_ledger WHERE window_id=?', (w['id'],)).fetchone()
+        out.append({'id': w['id'], 'start': w['window_start'], 'end': w['window_end'], 'created': w['created'], 'strategy_version': w['strategy_version'],
+                    'state': used['status'] if used else 'released' if w['released'] else 'locked'})
     return out

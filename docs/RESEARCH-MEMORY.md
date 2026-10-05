@@ -1,12 +1,13 @@
 # Research memory, run cards and the command line
 
-Three additive pieces sit beside the engine. None of them changes how a backtest is
-computed, and none of them touches `engine.py`, `data.py`, `experiments.py`,
-`strategies.py` or `config.py`, so the engine fingerprint is unchanged.
+Research memory sits beside the exact engine. Phase 2 step 1 changes selection
+in `experiments.py`; step 2 adds versioning and final-holdout controls without
+changing engine fills, market-data validation, strategies or Config.
 
 | File | What it is |
 |---|---|
 | `backend/runcard.py` | Pure. Turns one saved run into a JSON card, a short Markdown digest and a list of fixed-rule findings. |
+| `backend/holdout.py` | Locks fresh final dates, consumes attempts atomically and exposes only pass/fail. |
 | `backend/registry.py` | Strategies, studies, trials, a holdout ledger and a journal, in `workspace/lab.sqlite3`. |
 | `backend/causality.py` | Look-ahead check for any registered strategy. |
 | `backend/lab.py` | Command line over all of the above: `python -m backend.lab --help`. |
@@ -25,9 +26,10 @@ one **trial**, in the same database transaction as the run itself.
 | Compare | One per strategy compared. |
 | Grid, walk-forward | One per distinct candidate, however many folds evaluated it. |
 | Cost stress | One. The multipliers are assumptions about a single configuration, not rival candidates. |
+| Final holdout | One, recorded before data access, even if evaluation fails or is interrupted. No performance metrics are stored. |
 
-A trial is identified by a hash of its full, validated settings. Rerunning identical
-settings does not add a trial; a grid's `stop_atr: 1` and a saved `1.0` are the same
+A trial is identified by its strategy version and a hash of its full, validated
+settings. Rerunning identical settings on identical code does not add a trial; a grid's `stop_atr: 1` and a saved `1.0` are the same
 trial. A strategy seen for the first time is registered automatically as a draft so
 its trials are never dropped.
 
@@ -53,13 +55,12 @@ the API or the app.
 | `no_liquidations` | candidate | No held-out trade ended in liquidation. |
 | `engine_unchanged` | candidate | The run was produced by the code that is on disk now. |
 | `overfitting_checks` | promoted | Pending. Deflated Sharpe ratio and probability of backtest overfitting arrive in phase 2. |
-| `final_holdout` | promoted | Pending. The locked final holdout arrives in phase 2. |
+| `final_holdout` | promoted | A consumed final window passed for the current strategy version and the same development evidence run. Legacy ledger entries cannot satisfy it. |
 
 Two consequences worth knowing:
 
-- **Nothing can be promoted yet.** The last two gates cannot pass until phase 2
-  builds them. That is deliberate: a promotion that skipped them would mean less
-  than the word says.
+- **Nothing can be promoted yet.** Overfitting checks remain pending. Final
+  evaluation refuses to consume a window until every other promotion gate passes.
 - **Evidence is the latest held-out run, not the best one.** Choosing the best of
   several walk-forwards is the selection bias the gates exist to stop.
 
@@ -74,7 +75,7 @@ reopened as a draft; both moves are written to the journal.
 
 | Field | Contents |
 |---|---|
-| `run` | ID, kind, created, engine fingerprint, and whether that fingerprint is current. |
+| `run` | ID, kind, created, strategy version, engine fingerprint, and whether that fingerprint is current. |
 | `strategy` | Registry entry: status, origin, parent, hypothesis, archive reason. |
 | `setup`, `changed_from_default` | Pairs, dates, timeframe and execution settings; then only the settings that differ from defaults. |
 | `verdict` | The same plain-language verdict the app shows. |
@@ -150,12 +151,12 @@ Windows, `.venv/bin/python -m backend.lab ...` elsewhere.
 
 - The engine fingerprint is byte-exact and covers `custom_strategies.py`. Editing
   any custom strategy, or changing line endings on the engine files, marks every
-  strategy's earlier evidence as produced by older code. Per-strategy versioning
-  belongs with the holdout ledger in phase 2.
+  strategy's earlier evidence as produced by older code. Per-strategy version IDs
+  retain this conservative binding; there is no inferred dependency graph.
 - `survives_doubled_costs` is a linear estimate. The cost-stress experiment reruns
   sizing and fills but multiplies spread and slippage only, and runs in-sample.
-- The holdout ledger table exists and is read by the gates, but nothing writes to
-  it until the locked holdout is built.
+- Final evaluation remains blocked by the pending overfitting checks. This step
+  does not implement or bypass them, or replace the linear doubled-cost estimate.
 - A walk-forward result inherits the last fold's "Fewer than 100 trades" warning
   even when the held-out total is above 100. That comes from `experiments.py` and
   is left as it is; the card's `sample_size` finding uses the held-out total.
@@ -168,3 +169,71 @@ exact engine with signals disabled. Every training candidate is still recorded,
 with no selected fold for a skipped window. Run cards expose the skip in both
 splits and findings; cash folds are not parameter winners. Selection requires the
 trade minimum and positive finite net P&L and expectancy R, ranked by expectancy R.
+
+## Phase 2, step 2: versions and final holdout
+
+### Versions
+
+`strategy_versions` gives each strategy key and byte-exact engine digest one
+identity. Studies and trials keep it, so changed code with the same settings counts
+as another trial. Migration uses each historical run's stored digest; a missing
+digest stays unknown, never current. The engine fingerprint itself is unchanged,
+including its sensitivity to line endings and to all of `custom_strategies.py`, so
+any code edit makes a new version of every strategy. That overcounts; it never
+undercounts.
+
+### What a final holdout is
+
+A period of fresh dates, locked against research, on which one frozen
+configuration is run once through the exact engine. The only output is `passed` or
+`failed`. Metrics, trades, equity and engine error text are never saved, exported
+or shown.
+
+| Step | Command | What happens |
+|---|---|---|
+| Lock | `holdout lock <strategy> --start D --end D` | Freezes the latest walk-forward's last-fold training winner with the original balance. Refused if the dates overlap the development period, any saved study or logged run (warmup included), another live lock, or any earlier attempt. |
+| Fetch | `holdout fetch <window-id>` | Downloads the window's candles and funding, warmup included. Fetching and CSV import are not research access: nothing is shown and nothing is run. |
+| Evaluate | `holdout evaluate <window-id>` | Checks every gate, then checks the data is fully cached, then consumes the attempt, then runs. |
+| Release | `holdout release <window-id>` | Gives back a lock that was never evaluated. The dates are fresh again. |
+| Show | `holdout show <strategy>` | Status, attempts across the lineage, and every window with its ID and state. |
+
+### Rules
+
+- **One attempt per strategy version, counted across the lineage.** `uses` counts
+  every attempt by the strategy, its ancestors and its descendants, including
+  archived ones. A new version needs new, non-overlapping dates.
+- **Nothing is consumed until the run can actually happen.** Gates are checked
+  first, then data coverage. A missing candle file refuses with "Nothing was
+  consumed"; it does not fail the test.
+- **After that, the attempt is consumed before the engine starts.** A crash, a
+  cancel or an error counts as a failure and cannot be retried.
+- **While a lock is live, ordinary runs cannot read its dates**, through any
+  strategy or through indicator warmup. CSV import cannot replace its data.
+- **Once evaluated, the dates become ordinary research data.** The verdict is
+  fixed, so reading the period changes nothing. They can never be a final holdout
+  again.
+- **A lock dies with the code it was made on.** Any change to the engine files or
+  `custom_strategies.py` blocks evaluation. Release the lock, rerun the
+  walk-forward, and lock again; the same dates may be reused because nobody read
+  them.
+- **Pass means** at least 100 trades, positive net P&L and expectancy in R, no
+  liquidations, and the same engine digest at the end as at the start.
+- **Evaluation refuses today.** It requires every other promotion gate, and the
+  overfitting checks are not built yet. Locking now is harmless but pointless: the
+  next code change will require a release and a new lock.
+
+These are application controls. They do not stop anyone reading cache files,
+calling engine functions or editing SQLite directly.
+
+```bash
+python -m backend.lab holdout lock trend_pullback --start 2025-03-01 --end 2025-04-01
+python -m backend.lab holdout show trend_pullback
+python -m backend.lab holdout fetch <window-id>
+python -m backend.lab holdout evaluate <window-id>
+python -m backend.lab holdout release <window-id>
+```
+
+API: `POST /api/holdouts` with strategy, start and end; `GET /api/holdouts/{strategy}`;
+`POST /api/holdouts/{window}/fetch`, `/evaluate` and `/release`. Fetch and evaluate
+use the job queue. Strategy detail includes versions, holdout status and windows.
+No new dependency is added.

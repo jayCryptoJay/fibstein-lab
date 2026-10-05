@@ -38,6 +38,16 @@ Validated in Linux with Python 3.11 and 3.12 and local headless Chromium. Native
 
 On real JTOUSDT data, 1 October 2024 to 1 February 2025, six candidates and three folds: every candidate lost in training on every fold, so all three held-out windows stayed in cash. Before this change the same run traded the least-bad candidate in each fold and lost 5.79%. The plain January 15 to February 1 backtest is unchanged at 53 trades and approximately −5.23%.
 
+## Versioning and final holdout (5 October 2026)
+
+Validated in Linux with Python 3.11 and 3.12 and local headless Chromium. Native Windows was not independently tested.
+
+157 tests pass. No protected file changed in this step, so the engine fingerprint is the one set by the selection fixes.
+
+On real JTOUSDT data with the exact engine, using fixture development evidence because no real configuration tried had an eligible training winner: a window whose month was not cached refused with "Nothing was consumed" and stayed locked; an ordinary run on the locked dates was refused; `holdout fetch` downloaded the window with warmup; the evaluation then ran once and could not be repeated. A lock made before a simulated code change refused to evaluate, was released, and its dates became usable again. A database created by the previous release migrated in place and kept its trial counts.
+
+Evaluation through the real gates cannot be exercised yet: it requires the overfitting checks, which are not built.
+
 ## Remaining limitations
 
 Candle-based fills cannot reproduce the order book, exact intrabar ordering or exchange latency. Liquidation calculations use disclosed approximations, including trade-price rather than historical mark-price data. Funding timestamps are aligned to execution boundaries. Exchange rules require user overrides when historical rules are unavailable. Starter strategies have not been established as profitable. See the README and in-app methodology before interpreting results.
