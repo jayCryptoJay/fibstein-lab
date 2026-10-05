@@ -185,9 +185,11 @@ def cmd_holdout(a):
     elif a.action == 'evaluate':
         from . import server   # Register custom strategies before checking the frozen version.
         show(holdout.evaluate(a.key, db_path()))
+    elif a.action == 'fetch': show(holdout.fetch(a.key, db_path(), lambda message: print(message, file=sys.stderr)))
+    elif a.action == 'release': show(holdout.release(a.key, db_path()))
     else:
         with registry.session(db_path()) as db:
-            registry.require(db, a.key); show(registry.holdout_status(db, a.key))
+            registry.require(db, a.key); show({**registry.holdout_status(db, a.key), 'windows': registry.holdout_windows(db, a.key)})
 
 
 def parser():
@@ -215,8 +217,8 @@ def parser():
     x = add('journal', cmd_journal, 'Print the research journal: hypotheses, outcomes and status history.'); x.add_argument('key', nargs='?'); x.add_argument('--json', action='store_true')
     add('sync', cmd_sync, 'Record any saved runs the registry has not seen.')
     x = add('check', cmd_check, 'Test a registered strategy for look-ahead.'); x.add_argument('key'); x.add_argument('--json', action='store_true')
-    x = add('holdout', cmd_holdout, 'Lock fresh final dates, evaluate once, or show pass/fail and lineage attempts.')
-    x.add_argument('action', choices=['lock', 'evaluate', 'show']); x.add_argument('key', help='Strategy key for lock/show; locked window ID for evaluate.')
+    x = add('holdout', cmd_holdout, 'Lock fresh final dates, fetch their data, evaluate once, release an unused lock, or show status.')
+    x.add_argument('action', choices=['lock', 'fetch', 'evaluate', 'release', 'show']); x.add_argument('key', help='Strategy key for lock/show; locked window ID for fetch/evaluate/release.')
     x.add_argument('--start'); x.add_argument('--end')
     return p
 

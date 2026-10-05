@@ -43,11 +43,13 @@ CREATE INDEX IF NOT EXISTS trials_strategy ON trials (strategy);
 CREATE INDEX IF NOT EXISTS studies_strategy ON studies (strategy, created);
 CREATE TABLE IF NOT EXISTS strategy_versions (id TEXT PRIMARY KEY, strategy TEXT NOT NULL,
   engine_sha256 TEXT NOT NULL, created TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS holdout_windows (id TEXT PRIMARY KEY, strategy TEXT NOT NULL, strategy_version TEXT NOT NULL UNIQUE,
+CREATE TABLE IF NOT EXISTS holdout_windows (id TEXT PRIMARY KEY, strategy TEXT NOT NULL, strategy_version TEXT NOT NULL,
   engine_sha256 TEXT NOT NULL, evidence_run TEXT NOT NULL, window_start TEXT NOT NULL, window_end TEXT NOT NULL,
-  config TEXT NOT NULL, created TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS research_access (id INTEGER PRIMARY KEY, window_start TEXT NOT NULL, window_end TEXT NOT NULL);
+  config TEXT NOT NULL, created TEXT NOT NULL, released TEXT);
+CREATE TABLE IF NOT EXISTS research_access (id INTEGER PRIMARY KEY, window_start TEXT NOT NULL, window_end TEXT NOT NULL,
+  UNIQUE (window_start, window_end));
 '''
+SCHEMA_VERSION = 2   # Bump when connect() must migrate again; an up-to-date file is opened without a write lock.
 
 
 def now(): return datetime.now(timezone.utc).isoformat()
@@ -56,10 +58,11 @@ def now(): return datetime.now(timezone.utc).isoformat()
 def connect(path=None):
     path = Path(path or DB); path.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(path); db.row_factory = sqlite3.Row; db.executescript(SCHEMA)
+    if db.execute('PRAGMA user_version').fetchone()[0] >= SCHEMA_VERSION: return db
     # Old evidence keeps its original digest; migrations must not bless it as current code.
     with db:
         db.execute('BEGIN IMMEDIATE')
-        for table, columns in {'studies': {'strategy_version': 'TEXT'}, 'trials': {'strategy_version': 'TEXT'},
+        for table, columns in {'studies': {'strategy_version': 'TEXT'}, 'trials': {'strategy_version': 'TEXT'}, 'holdout_windows': {'released': 'TEXT'},
                                'holdout_ledger': {'strategy_version': 'TEXT', 'window_id': 'TEXT', 'status': "TEXT NOT NULL DEFAULT 'legacy'", 'evidence_run': 'TEXT'}}.items():
             existing = {r['name'] for r in db.execute(f'PRAGMA table_info({table})')}
             for column, declaration in columns.items():
@@ -71,6 +74,9 @@ def connect(path=None):
             db.execute('UPDATE trials SET strategy_version=? WHERE rowid=?', (ensure_version(db, r['strategy'], r['engine_sha256']), r['rowid']))
         db.execute('CREATE UNIQUE INDEX IF NOT EXISTS holdout_once ON holdout_ledger(strategy_version) WHERE strategy_version IS NOT NULL')
         db.execute('CREATE UNIQUE INDEX IF NOT EXISTS holdout_window_once ON holdout_ledger(window_id) WHERE window_id IS NOT NULL')
+        # One live lock per strategy version; a released lock no longer counts.
+        db.execute('CREATE UNIQUE INDEX IF NOT EXISTS holdout_window_live ON holdout_windows(strategy_version) WHERE released IS NULL')
+        db.execute(f'PRAGMA user_version={SCHEMA_VERSION}')
     return db
 
 
@@ -262,7 +268,7 @@ def gates(db, key, current_engine=None):
     gate('overfitting_checks', 'promoted', 'pending', 'Deflated Sharpe ratio and probability of backtest overfitting are not implemented yet (plan phase 2).')
     used = db.execute('SELECT passed FROM holdout_ledger WHERE strategy=? AND strategy_version=? AND evidence_run=? ORDER BY id DESC LIMIT 1',
                       (key, strategy_version(key, current_engine or engine_fingerprint()), e['id'] if e else None)).fetchone()
-    if used is None: gate('final_holdout', 'promoted', 'pending', 'No locked final holdout has been evaluated for this strategy (plan phase 2).')
+    if used is None: gate('final_holdout', 'promoted', 'pending', 'No final holdout has been evaluated for this strategy version and this evidence run.')
     else: gate('final_holdout', 'promoted', 'pass' if used['passed'] else 'fail', 'Locked final holdout ' + ('passed.' if used['passed'] else 'failed.'))
     return {'strategy': key, 'evidence_run': e['id'] if e else None, 'gates': out,
             'candidate_ready': all(g['status'] == 'pass' for g in out if g['needed_for'] == 'candidate'),
@@ -356,5 +362,15 @@ def holdout_status(db, key, current_engine=None):
     uses = db.execute(f'SELECT COUNT(*) FROM holdout_ledger WHERE strategy IN ({marks})', keys).fetchone()[0]
     version = strategy_version(key, current_engine or engine_fingerprint())
     row = db.execute('SELECT passed FROM holdout_ledger WHERE strategy_version=?', (version,)).fetchone()
-    locked = db.execute('SELECT 1 FROM holdout_windows WHERE strategy_version=?', (version,)).fetchone()
+    locked = db.execute('SELECT 1 FROM holdout_windows WHERE strategy_version=? AND released IS NULL', (version,)).fetchone()
     return {'status': ('passed' if row['passed'] else 'failed') if row else 'locked' if locked else 'not_configured', 'uses': uses}
+
+
+def holdout_windows(db, key):
+    """Every reservation for a strategy, newest first: dates and state only, never a result beyond pass or fail."""
+    out = []
+    for w in db.execute('SELECT id,strategy_version,window_start,window_end,created,released FROM holdout_windows WHERE strategy=? ORDER BY created DESC', (key,)):
+        used = db.execute('SELECT status FROM holdout_ledger WHERE window_id=?', (w['id'],)).fetchone()
+        out.append({'id': w['id'], 'start': w['window_start'], 'end': w['window_end'], 'created': w['created'], 'strategy_version': w['strategy_version'],
+                    'state': used['status'] if used else 'released' if w['released'] else 'locked'})
+    return out

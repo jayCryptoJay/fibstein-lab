@@ -23,12 +23,25 @@ class HoldoutApiTests(unittest.TestCase):
 
     def test_api_rejects_locked_research_before_engine(self):
         with registry.session(self.path) as db:
-            db.execute('INSERT INTO holdout_windows VALUES (?,?,?,?,?,?,?,?,?)',
+            db.execute('INSERT INTO holdout_windows (id,strategy,strategy_version,engine_sha256,evidence_run,window_start,window_end,config,created) VALUES (?,?,?,?,?,?,?,?,?)',
                        ('window', self.c.strategy, 'version', 'engine', 'evidence', '2025-01-01', '2025-02-01', '{}', registry.now()))
         with patch.object(self.server, 'launch', side_effect=lambda fn: fn(lambda _: None, lambda: False)), patch.object(self.server, 'run_backtest') as run:
             with self.assertRaisesRegex(ValueError, 'locked'):
                 self.server.run(self.server.RunRequest(config=self.c))
             run.assert_not_called()
+        # Downloading the same dates is still allowed and is not logged as research: it is how the test gets its data.
+        with patch.object(self.server, 'launch', side_effect=lambda fn: fn(lambda _: None, lambda: False)), patch.object(self.server, 'download_archive') as download, patch.object(self.server, 'inventory', return_value=[]):
+            self.server.download(self.c)
+            self.assertEqual(download.call_count, 1)
+        with registry.session(self.path) as db: self.assertEqual(db.execute('SELECT COUNT(*) FROM research_access').fetchone()[0], 0)
+
+    def test_api_release_and_fetch_route_to_the_private_service(self):
+        with patch.object(holdout, 'release', return_value={'id': 'window', 'status': 'released'}) as release:
+            self.assertEqual(self.server.release_holdout('window')['status'], 'released'); release.assert_called_once_with('window', self.path)
+        with patch.object(holdout, 'release', side_effect=ValueError('consumed')):
+            with self.assertRaises(self.server.HTTPException): self.server.release_holdout('window')
+        with patch.object(self.server, 'launch', side_effect=lambda fn: fn(lambda _: None, lambda: False)), patch.object(holdout, 'fetch', return_value={'status': 'fetched'}) as fetch:
+            self.assertEqual(self.server.fetch_holdout('window'), {'status': 'fetched'}); fetch.assert_called_once_with('window', self.path, ANY, ANY)
 
     def test_api_holdout_evaluation_uses_only_private_service(self):
         with patch.object(self.server, 'launch', side_effect=lambda fn: fn(lambda _: None, lambda: False)), patch.object(holdout, 'evaluate', return_value={'status': 'failed'}) as evaluate, patch.object(self.server, 'persist_result') as persist:

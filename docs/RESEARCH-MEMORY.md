@@ -172,58 +172,68 @@ trade minimum and positive finite net P&L and expectancy R, ranked by expectancy
 
 ## Phase 2, step 2: versions and final holdout
 
-`strategy_versions` assigns a deterministic content identity to each strategy key
-and byte-exact engine digest. Studies and trials retain that identity. Migration
-uses each historical run's stored digest; missing digests remain unknown, never
-current. Changed code with the same settings counts as another trial. Historical
-rows and archived lineages are retained. The engine fingerprint itself is
-unchanged, including its sensitivity to CRLF and all of `custom_strategies.py`.
+### Versions
 
-A final window is immutable and reserved once per strategy version. Locking it
-freezes the latest development run and its last fold's training-selected settings
-with the original balance. It never selects using test metrics. A last fold with
-no selected candidate cannot be deployed. Final dates must follow the complete
-development period and must not overlap previously logged access, saved studies
-(including warmup), another reservation, or a legacy holdout attempt. Saved runs
-are synced first; unreadable runs make freshness unverifiable and block locking.
+`strategy_versions` gives each strategy key and byte-exact engine digest one
+identity. Studies and trials keep it, so changed code with the same settings counts
+as another trial. Migration uses each historical run's stored digest; a missing
+digest stays unknown, never current. The engine fingerprint itself is unchanged,
+including its sensitivity to line endings and to all of `custom_strategies.py`, so
+any code edit makes a new version of every strategy. That overcounts; it never
+undercounts.
 
-The normal API/CLI run, download and CSV-import paths log data access before work.
-A SQLite write transaction serializes this with locking. Failed jobs still make
-their dates ineligible as fresh holdout data. Ordinary research cannot read a
-reserved window, including through indicator warmup or another strategy. These
-controls apply across all strategies, conservatively, because the owner can
-learn from any displayed result. They are application controls, not protection
-against directly reading cache files, calling engine functions or editing SQLite.
-Existing off-app data inspection cannot be discovered automatically.
+### What a final holdout is
 
-Evaluation requires unchanged code, unchanged development evidence and every
-other promotion gate passing. There is no override. Before any final data access,
-an immediate SQLite transaction writes a consumed attempt plus a study/trial
-through `registry.record_run`. Concurrent callers cannot claim the same window.
-Crashes and interrupted attempts remain consumed with a failing public status.
-Archived/reopened strategies, child variants and code versions do not reset the
-lineage attempt count. A changed version needs genuinely fresh, nonoverlapping
-dates; it cannot reuse even an abandoned reserved window.
+A period of fresh dates, locked against research, on which one frozen
+configuration is run once through the exact engine. The only output is `passed` or
+`failed`. Metrics, trades, equity and engine error text are never saved, exported
+or shown.
 
-The exact `run_backtest` engine evaluates the frozen configuration. Pass requires
-at least 100 trades, positive finite net P&L and expectancy R, zero liquidations,
-and an unchanged engine digest at completion. It returns only `passed` or
-`failed`. Metrics, trades, equity and engine exception text are not saved to
-ordinary run files, cards, exports, studies or journal. Lifecycle states before
-an attempt are `not_configured` and `locked`; `uses` counts every attempt across
-the lineage, including legacy, failed and interrupted entries. Model assumptions
-remain those documented for the unchanged exact engine.
+| Step | Command | What happens |
+|---|---|---|
+| Lock | `holdout lock <strategy> --start D --end D` | Freezes the latest walk-forward's last-fold training winner with the original balance. Refused if the dates overlap the development period, any saved study or logged run (warmup included), another live lock, or any earlier attempt. |
+| Fetch | `holdout fetch <window-id>` | Downloads the window's candles and funding, warmup included. Fetching and CSV import are not research access: nothing is shown and nothing is run. |
+| Evaluate | `holdout evaluate <window-id>` | Checks every gate, then checks the data is fully cached, then consumes the attempt, then runs. |
+| Release | `holdout release <window-id>` | Gives back a lock that was never evaluated. The dates are fresh again. |
+| Show | `holdout show <strategy>` | Status, attempts across the lineage, and every window with its ID and state. |
+
+### Rules
+
+- **One attempt per strategy version, counted across the lineage.** `uses` counts
+  every attempt by the strategy, its ancestors and its descendants, including
+  archived ones. A new version needs new, non-overlapping dates.
+- **Nothing is consumed until the run can actually happen.** Gates are checked
+  first, then data coverage. A missing candle file refuses with "Nothing was
+  consumed"; it does not fail the test.
+- **After that, the attempt is consumed before the engine starts.** A crash, a
+  cancel or an error counts as a failure and cannot be retried.
+- **While a lock is live, ordinary runs cannot read its dates**, through any
+  strategy or through indicator warmup. CSV import cannot replace its data.
+- **Once evaluated, the dates become ordinary research data.** The verdict is
+  fixed, so reading the period changes nothing. They can never be a final holdout
+  again.
+- **A lock dies with the code it was made on.** Any change to the engine files or
+  `custom_strategies.py` blocks evaluation. Release the lock, rerun the
+  walk-forward, and lock again; the same dates may be reused because nobody read
+  them.
+- **Pass means** at least 100 trades, positive net P&L and expectancy in R, no
+  liquidations, and the same engine digest at the end as at the start.
+- **Evaluation refuses today.** It requires every other promotion gate, and the
+  overfitting checks are not built yet. Locking now is harmless but pointless: the
+  next code change will require a release and a new lock.
+
+These are application controls. They do not stop anyone reading cache files,
+calling engine functions or editing SQLite directly.
 
 ```bash
-python -m backend.lab strategy show trend_pullback --json
 python -m backend.lab holdout lock trend_pullback --start 2025-03-01 --end 2025-04-01
 python -m backend.lab holdout show trend_pullback
-python -m backend.lab holdout evaluate <locked-window-id>
+python -m backend.lab holdout fetch <window-id>
+python -m backend.lab holdout evaluate <window-id>
+python -m backend.lab holdout release <window-id>
 ```
 
-Dates above are examples and must actually be fresh for the workspace. Evaluation
-currently refuses because overfitting checks remain pending; it does not burn an
-attempt in that case. API equivalents: `POST /api/holdouts` with strategy/start/end,
-`GET /api/holdouts/{strategy}`, and `POST /api/holdouts/{window}/evaluate`. The last
-uses the existing job queue and returns only the decision. Strategy detail JSON
-includes version history and lineage holdout status. No new dependency is added.
+API: `POST /api/holdouts` with strategy, start and end; `GET /api/holdouts/{strategy}`;
+`POST /api/holdouts/{window}/fetch`, `/evaluate` and `/release`. Fetch and evaluate
+use the job queue. Strategy detail includes versions, holdout status and windows.
+No new dependency is added.

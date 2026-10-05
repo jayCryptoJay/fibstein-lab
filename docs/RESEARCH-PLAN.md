@@ -9,7 +9,7 @@ the brief; the rest is what running it found and what has been built since.
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Run cards, findings, command line, registry with gates and archive reasons, Library view, look-ahead check, Pine conversion guide | **Built** (2 October 2026). 102 tests. See `RESEARCH-MEMORY.md`, `PINE-CONVERSION.md`. |
-| 2 | Parallel runs, Optuna studies, `strategy_params`, locked holdout, overfitting gates, the two selection fixes | Steps 1 and 2 approved. Steps 1 and 2 implemented in separate draft PRs; full-suite verification remains blocked. Parameters, parallel runs, Optuna and overfitting gates remain unapproved. |
+| 2 | Parallel runs, Optuna studies, `strategy_params`, locked holdout, overfitting gates, the two selection fixes | Steps 1 and 2 (selection fixes; versioning and final holdout) approved and implemented, 5 October 2026: 115 and 157 tests, verified on Python 3.11 and 3.12. `strategy_params`, parallel runs, Optuna and the overfitting gates are not approved yet. |
 | 3 | Signal exits, long/short flips, per-signal stop and target prices, TradingView parity harness, optional faster engine | Not started. Needs approval: touches `engine.py`. |
 | 4 | MCP server with a budgeted autonomous loop; XGBoost meta-labeling | Optional. |
 

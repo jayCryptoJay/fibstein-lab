@@ -101,7 +101,7 @@ def run(body:RunRequest):
 def download(config:Config):
     if config.source=='csv': raise HTTPException(400,'Use CSV import for this source.')
     def execute(progress,cancel):
-        holdout.research_access(config,DB)
+        # Fetching verified candles shows no price and runs nothing, so it is not research access.
         import pandas as pd
         warmup=max(config.htf_ema*4*1.5/24,config.ema_slow*config.timeframe*2/1440,3)
         begin=(utc(config.start)-pd.Timedelta(days=warmup)).date()
@@ -170,7 +170,7 @@ def run_digest(rid:str): return Response(runcard.digest(card_of(rid)),media_type
 
 def strategy_detail(db,key):
     return {**registry.require(db,key),'gates':registry.gates(db,key),'versions':registry.versions(db,key),
-            'holdout':registry.holdout_status(db,key),'studies':registry.studies(db,key,20),'journal':registry.journal(db,key,50)}
+            'holdout':registry.holdout_status(db,key),'holdout_windows':registry.holdout_windows(db,key),'studies':registry.studies(db,key,20),'journal':registry.journal(db,key,50)}
 
 @app.get('/api/library')
 def library():
@@ -238,6 +238,15 @@ def holdout_status(key:str):
 def evaluate_holdout(wid:str):
     return launch(lambda progress,cancel:holdout.evaluate(wid,DB,cancel=cancel))
 
+@app.post('/api/holdouts/{wid}/fetch')
+def fetch_holdout(wid:str):
+    return launch(lambda progress,cancel:holdout.fetch(wid,DB,progress,cancel))
+
+@app.post('/api/holdouts/{wid}/release')
+def release_holdout(wid:str):
+    try: return holdout.release(wid,DB)
+    except ValueError as e: raise HTTPException(400,str(e)) from e
+
 @app.get('/api/presets')
 def presets():
     with sqlite3.connect(DB) as db: rows=db.execute('SELECT * FROM presets ORDER BY name').fetchall()
@@ -264,7 +273,7 @@ class ImportRequest(BaseModel):
 def import_data(body:ImportRequest):
     if any(j['status'] in ('queued','running') for j in JOBS.values()): raise HTTPException(409,'Finish the running job before changing its data.')
     try:
-        holdout.import_access(body.candles,body.funding,DB)
+        holdout.import_guard(body.candles,body.funding,DB)
         return import_csv(body.pair,body.candles,body.funding)
     except Exception as e: raise HTTPException(400,str(e)) from e
 

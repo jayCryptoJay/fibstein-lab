@@ -30,10 +30,11 @@ backend/
   runcard.py       Turns a saved run into a JSON card, a Markdown digest and fixed-rule findings. Pure.
   registry.py      Research memory: strategies, studies, trials, gates, journal. Never deletes.
   causality.py     Look-ahead check for any registered strategy.
+  holdout.py       Final holdout: lock fresh dates, check data, consume one attempt, report pass or fail only.
   lab.py           Command line over the three above: python -m backend.lab --help
   server.py        HTTP API, job queue, run persistence.
 frontend/src/      React. Settings (left rail), Results (main), Views (data/compare/docs).
-tests/             115 tests. All must pass before any commit.
+tests/             157 tests. All must pass before any commit.
 presets/           Saved configurations, including the bundled sample.
 data/              Cached candles. NOT tracked in git. See "Data" below.
 ```
@@ -42,7 +43,7 @@ data/              Cached candles. NOT tracked in git. See "Data" below.
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests -q     # expect: 115 passed
+.venv/bin/python -m pytest tests -q     # expect: 157 passed
 .venv/bin/python launch.py              # serves the app
 ```
 
@@ -99,6 +100,15 @@ counted across a strategy's whole lineage, archived variants included. Do not ad
 a delete, a reset, or a way to save a run without recording it, and do not let a
 status move without passing its gates: `registry.promote` has no override on
 purpose. See `docs/RESEARCH-MEMORY.md`.
+
+**8. A final holdout is spent once and shows only pass or fail.**
+
+`holdout.evaluate` consumes the attempt before the engine starts, so a crash or a
+cancel cannot become a retry, and it never saves or returns a metric. Do not add a
+retry, a result export, or a way to run ordinary research on a live lock's dates.
+The other direction matters as much: do not consume an attempt for a reason that is
+not the strategy's fault. Gates and data coverage are checked first, and a lock that
+was never evaluated can be released. See `docs/RESEARCH-MEMORY.md`.
 
 ---
 
@@ -166,7 +176,7 @@ match the file you are editing rather than reformatting it. Comments explain
 *why*, never *what* — the existing one-line comments above tricky blocks in
 `engine.py` are the model. No emoji in code, commits, or UI copy.
 
-Every change: run `pytest tests -q` and confirm 115 passing before you commit. If your
+Every change: run `pytest tests -q` and confirm 157 passing before you commit. If your
 environment cannot install the pinned dependencies, say so in the pull request and
 keep it draft until someone has run the full suite.
 
