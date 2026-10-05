@@ -8,7 +8,7 @@ from pathlib import Path
 from . import registry, runcard, holdout, pine
 from .config import Config
 
-WORKSPACE = registry.ROOT/'workspace'
+WORKSPACE = registry.paths.WORKSPACE
 
 
 def db_path(): return WORKSPACE/'lab.sqlite3'

@@ -72,6 +72,16 @@ In the browser at 1440 × 1000 and 390 × 844: paste, check, add, select and run
 
 Not verified: agreement with TradingView's Strategy Tester. No script's trade list has been compared with TradingView's on the same market.
 
+## One-folder app and automated checks (5 October 2026)
+
+251 tests pass on Linux with Python 3.11 and 3.12.
+
+`scripts/build_app.py` was run on Linux: it fetched January 2025 for the ten default pairs with checksum verification, built the app with PyInstaller 6.22.3, started it with an empty per-user folder and required, before packing, that the app answered, used the per-user folder, reported the same engine fingerprint as the source tree, passed a Pine script through the checker, copied the sample candles into the user folder, and completed the sample backtest (53 trades, the documented figure). The 66 MB archive was then unpacked elsewhere and started from there; a second start opened the running app instead of failing; a bybit download reached the network through the bundled exchange adapters; a Pine script was added and backtested inside the installed app.
+
+The engine fingerprint now normalises line endings, so one commit has one fingerprint on every system. It changed once because of that.
+
+Not verified here: the Windows and macOS builds, and the test suite on Windows and macOS. Those are what the two GitHub Actions workflows added in this step are for: `tests.yml` runs the suite on Linux, Windows and macOS with Python 3.11 and 3.12, and `release.yml` builds and tries the app on all three. Their first results are the first real evidence for those systems. The builds are not code-signed.
+
 ## Remaining limitations
 
 Candle-based fills cannot reproduce the order book, exact intrabar ordering or exchange latency. Liquidation calculations use disclosed approximations, including trade-price rather than historical mark-price data. Funding timestamps are aligned to execution boundaries. Exchange rules require user overrides when historical rules are unavailable. Starter strategies have not been established as profitable. See the README and in-app methodology before interpreting results.

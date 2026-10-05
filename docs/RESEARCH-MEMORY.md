@@ -153,8 +153,9 @@ Windows, `.venv/bin/python -m backend.lab ...` elsewhere.
 
 ## Known limits
 
-- The engine fingerprint is byte-exact and covers `custom_strategies.py`. Editing
-  any custom strategy, or changing line endings on the engine files, marks every
+- The engine fingerprint covers the engine files and `custom_strategies.py`, with
+  line endings normalised so the same code matches on every operating system and
+  in the installed app. Editing any custom strategy marks every
   strategy's earlier evidence as produced by older code. Per-strategy version IDs
   retain this conservative binding; there is no inferred dependency graph.
 - `survives_doubled_costs` is a linear estimate. The cost-stress experiment reruns
@@ -182,7 +183,7 @@ trade minimum and positive finite net P&L and expectancy R, ranked by expectancy
 identity. Studies and trials keep it, so changed code with the same settings counts
 as another trial. Migration uses each historical run's stored digest; a missing
 digest stays unknown, never current. The engine fingerprint itself is unchanged,
-including its sensitivity to line endings and to all of `custom_strategies.py`, so
+including its sensitivity to all of `custom_strategies.py` (line endings no longer count), so
 any code edit makes a new version of every strategy. That overcounts; it never
 undercounts.
 

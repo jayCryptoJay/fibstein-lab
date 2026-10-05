@@ -13,9 +13,9 @@ from .data import ROOT,inventory,download_archive,download_ccxt,import_csv,utc
 from .engine import run_backtest
 from .experiments import experiment
 from .verdict import read as read_verdict
-from . import registry,runcard,holdout,pine
+from . import registry,runcard,holdout,pine,paths
 
-STATE=ROOT/'workspace'; STATE.mkdir(exist_ok=True)
+STATE=paths.WORKSPACE; STATE.mkdir(parents=True,exist_ok=True)
 RESULTS=STATE/'runs'; RESULTS.mkdir(exist_ok=True)
 DB=STATE/'lab.sqlite3'
 PINE=STATE/'pine'
@@ -52,7 +52,7 @@ def persist_result(result,kind):
         held_out=kind in ('walkforward','grid')
         result['verdict']=read_verdict(result['metrics'],out_of_sample=held_out,
                                        folds=len(result.get('folds',[])) or None,cash_folds=runcard.cash_folds(result))
-    result['engine_sha256']=registry.engine_fingerprint(ROOT)
+    result['engine_sha256']=registry.engine_fingerprint()
     result['strategy_version']=registry.strategy_version(result['config']['strategy'],result['engine_sha256'])
     with gzip.open(RESULTS/f'{rid}.json.gz','wt') as f: json.dump(result,f,allow_nan=False)
     # One transaction: a run is never saved without also being counted as a study and its trials.
@@ -77,7 +77,8 @@ def launch(fn):
 @app.get('/api/meta')
 def meta():
     return {'pairs':PAIRS,'strategies':STRATEGIES,'defaults':Config().model_dump(mode='json'),
-            'sample':Config(start='2025-01-15',end='2025-02-01').model_dump(mode='json'),'version':'1.0.0'}
+            'sample':Config(start='2025-01-15',end='2025-02-01').model_dump(mode='json'),'version':'1.0.0',
+            'engine_sha256':registry.engine_fingerprint(),'installed':paths.FROZEN,'home':str(paths.HOME)}
 
 @app.get('/api/data')
 def datasets(): return inventory()
@@ -307,9 +308,9 @@ def import_data(body:ImportRequest):
         return import_csv(body.pair,body.candles,body.funding)
     except Exception as e: raise HTTPException(400,str(e)) from e
 
-if (ROOT/'custom_strategies.py').exists():
+if (paths.HOME/'custom_strategies.py').exists():
     import importlib.util
-    spec=importlib.util.spec_from_file_location('custom_strategies',ROOT/'custom_strategies.py')
+    spec=importlib.util.spec_from_file_location('custom_strategies',paths.HOME/'custom_strategies.py')
     module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
 
 pine.load_saved(PINE)

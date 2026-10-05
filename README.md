@@ -2,9 +2,21 @@
 
 A free, local USDT perpetual-futures research app with a React dashboard and an inspectable Python execution engine. This is a backtester, not a live trading bot. Starter strategies are research templates, not proven profitable systems.
 
-## Start on Windows
+## Install without Python
 
-1. Extract the entire ZIP. Do not run it from inside the ZIP viewer.
+Download the archive for your system from the project's **Releases** page, unpack it, open the `FibStein Lab` folder and start `FibStein Lab`. The app opens in your browser. Nothing else needs installing, and the January 2025 sample candles are included.
+
+- **Windows:** the build is not code-signed, so SmartScreen shows "Windows protected your PC". Choose **More info**, then **Run anyway**.
+- **macOS (Apple silicon):** the first time, right-click `FibStein Lab` and choose **Open**, then **Open** again. Intel Macs: use the Python route below.
+- **Linux:** `tar xzf FibStein-Lab-linux-x86_64.tar.gz`, then run `./"FibStein Lab/FibStein Lab"`.
+
+Your runs, saved scripts, strategy library and candle cache are kept outside the app folder, so updating means replacing the folder and nothing is lost: `%LOCALAPPDATA%\FibStein Lab` on Windows, `~/Library/Application Support/FibStein Lab` on macOS, `~/.local/share/fibstein-lab` on Linux. Set the `FIBSTEIN_HOME` environment variable to keep them somewhere else. The app prints the folder when it starts.
+
+Each archive is built by `scripts/build_app.py` in GitHub Actions, which also starts the built app and runs the sample backtest in it before anything is published. To build one yourself: `python -m pip install -r requirements-build.txt`, then `python scripts/build_app.py`.
+
+## Start on Windows with Python
+
+1. Download or clone the source and extract it fully. Do not run it from inside a ZIP viewer.
 2. Install Python **3.12** if it is not already installed. The official download is [python.org](https://www.python.org/downloads/).
 3. Double-click **Start-Windows.bat**. The first launch installs free dependencies into this folder's `.venv`; later launches reuse them.
 4. Keep the terminal open. The app opens in your browser at `http://127.0.0.1:8765`.

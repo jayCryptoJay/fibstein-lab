@@ -151,7 +151,16 @@ def test_sync_backfills_saved_runs_and_skips_unreadable_files(db,tmp_path):
 def test_engine_fingerprint_matches_the_digest_saved_on_runs():
     source=b''.join((registry.ROOT/'backend'/x).read_bytes() for x in registry.ENGINE_FILES)
     if (registry.ROOT/'custom_strategies.py').exists(): source+=(registry.ROOT/'custom_strategies.py').read_bytes()
-    assert registry.engine_fingerprint()==hashlib.sha256(source).hexdigest()
+    assert registry.engine_fingerprint()==hashlib.sha256(source.replace(b'\r\n',b'\n')).hexdigest()
+
+def test_engine_fingerprint_ignores_line_endings_and_reads_custom_strategies_from_the_given_root(tmp_path):
+    def project(name,newline,custom=None):
+        root=tmp_path/name; (root/'backend').mkdir(parents=True)
+        for x in registry.ENGINE_FILES: (root/'backend'/x).write_bytes(f'a = 1{newline}b = 2{newline}'.encode())
+        if custom: (root/'custom_strategies.py').write_bytes(custom)
+        return registry.engine_fingerprint(root)
+    unix=project('unix','\n'); assert project('windows','\r\n')==unix
+    assert project('custom','\n',b'x = 1\n')!=unix and project('custom_crlf','\r\n',b'x = 1\r\n')==project('custom2','\n',b'x = 1\n')
 
 def test_saving_a_run_records_its_trials(tmp_path,monkeypatch):
     from backend import server
