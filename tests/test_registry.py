@@ -149,7 +149,7 @@ def test_sync_backfills_saved_runs_and_skips_unreadable_files(db,tmp_path):
     assert registry.count_trials(db,['trend_pullback'])==2
 
 def test_engine_fingerprint_matches_the_digest_saved_on_runs():
-    source=b''.join((registry.ROOT/'backend'/x).read_bytes() for x in ['engine.py','strategies.py','config.py','data.py','experiments.py'])
+    source=b''.join((registry.ROOT/'backend'/x).read_bytes() for x in registry.ENGINE_FILES)
     if (registry.ROOT/'custom_strategies.py').exists(): source+=(registry.ROOT/'custom_strategies.py').read_bytes()
     assert registry.engine_fingerprint()==hashlib.sha256(source).hexdigest()
 

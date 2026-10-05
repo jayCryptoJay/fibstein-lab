@@ -20,7 +20,8 @@ export default function Settings({c,set,meta,onConfig,onError,presets,refreshPre
  return <aside className="settings"><h2>Settings</h2>
   <label className="field"><span>Market</span><select aria-label="Market" value={c.pairs[0]} onChange={e=>set('pairs',[e.target.value,...c.pairs.slice(1).filter(x=>x!==e.target.value)])}>{[...new Set([...meta.pairs,...c.pairs])].map(p=><option key={p} value={p}>{p.replace('USDT',' / USDT')}</option>)}</select></label>
   <div className="quick-pairs">{['SOLUSDT','BTCUSDT','ETHUSDT'].map(p=><button key={p} onClick={()=>set('pairs',[p])}>{p.slice(0,-4)}</button>)}<details><summary>+6</summary><div className="pair-pop">{meta.pairs.slice(4).map(p=><button key={p} onClick={()=>set('pairs',[p])}>{p.slice(0,-4)}</button>)}</div></details></div>
-  {field('Strategy','strategy',Object.entries(meta.strategies).map(([k,v])=>[k,v.name]))}
+  {field('Strategy','strategy',Object.entries({...meta.strategies,...(meta.strategies[c.strategy]?{}:{[c.strategy]:{name:c.strategy}})}).map(([k,v])=>[k,v.name]))}
+  {c.strategy.startsWith('pine_')&&<p className="hint pine-note">From a Pine script. Entries, exits, stops and targets are the script's. Not applied to it: higher-timeframe filter, target multiple, maximum hold, trailing and breakeven. The ATR stop is used only where the script gives none. Entry order must be Market.</p>}
   {field('Signal timeframe','timeframe',[[5,'5m'],[15,'15m'],[30,'30m'],[60,'1h']])}
   <div className="two-col"><Field label="Start date" name="start" type="date" c={c} set={set}/><Field label="End · exclusive" name="end" type="date" c={c} set={set}/></div>
   <Field label="Starting balance" name="balance" unit="USDT" c={c} set={set}/>

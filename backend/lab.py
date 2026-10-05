@@ -5,7 +5,7 @@ computed; `run` calls the exact engine and saves through the server's own path.
 """
 import argparse, gzip, json, sqlite3, sys
 from pathlib import Path
-from . import registry, runcard, holdout
+from . import registry, runcard, holdout, pine
 from .config import Config
 
 WORKSPACE = registry.ROOT/'workspace'
@@ -192,6 +192,45 @@ def cmd_holdout(a):
             registry.require(db, a.key); show({**registry.holdout_status(db, a.key), 'windows': registry.holdout_windows(db, a.key)})
 
 
+def print_report(r):
+    print(('Ready to test' if r['ok'] else 'Cannot be tested yet') + f' · Pine v{r["version"] or "?"}' + (f' · {r["title"]}' if r['title'] else ''))
+    for label, items in (('refused', r['refused']), ('differs', r['approximated']), ('skipped', r['ignored'])):
+        for x in items:
+            lines = [x['line']] if x.get('line') else x.get('lines', [])
+            print(f'  [{label:7}] ' + (f'line {", ".join(map(str, lines))}: ' if lines else '') + x['text'])
+    if r['entries']: print('  entries: ' + ', '.join(f'{x["id"]} ({x["direction"]})' for x in r['entries']))
+    if r['exits']: print('  exits: ' + '; '.join(r['exits']))
+    if r['inputs']: print('  inputs at their defaults: ' + ', '.join(f'{x["title"] or x["kind"]} = {x["default"]}' for x in r['inputs']))
+    if r.get('dry_run'):
+        d = r['dry_run']; print(f'  trial run on {d["bars"]:,} synthetic candles: {d["long_entries"]} long and {d["short_entries"]} short entries, {d["signal_exits"]} signal exits, {d["moved_levels"]} moved stops or targets.')
+    if r.get('look_ahead'): print('  look-ahead: ' + ('none found' if r['look_ahead']['ok'] else 'FOUND') + f' across {r["look_ahead"]["signals_checked"]} signal comparisons.')
+
+
+def cmd_pine(a):
+    folder = WORKSPACE/'pine'
+    if a.action == 'list':
+        rows = pine.listing(folder)
+        return show(rows) if a.json else table([{**x, 'created': x['created'][:16].replace('T', ' ')} for x in rows], ['key', 'name', 'version', 'parent', 'created'])
+    if not a.target: raise ValueError('Give a .pine file for check and add, or a strategy key for show.')
+    if a.action == 'show':
+        x = pine.read(folder, a.target); return show(x) if a.json else print(x['source'], end='')
+    path = Path(a.target)
+    if not path.exists(): raise ValueError(f'{path} not found.')
+    source = path.read_text(encoding='utf-8-sig')
+    if a.action == 'check':
+        r = pine.check(source); show(r) if a.json else print_report(r)
+        if not r['ok']: raise SystemExit(1)
+        return
+    with registry.session(db_path()) as db:
+        if a.parent: registry.require(db, a.parent)
+    saved = pine.add(source, folder, a.name, a.parent)
+    with registry.session(db_path()) as db:
+        if not registry.get(db, saved['key']): registry.add_strategy(db, saved['key'], saved['name'], a.hypothesis or '', a.parent, 'pine')
+    if a.json: return show(saved)
+    print_report(saved['report'])
+    print(f'{"Already saved" if saved["existing"] else "Saved"} as {saved["key"]}. Run it with: python -m backend.lab run --preset sample-jto --set strategy={saved["key"]}')
+
+
 def parser():
     p = argparse.ArgumentParser(prog='python -m backend.lab', description='FibStein Lab research memory and run cards.')
     s = p.add_subparsers(dest='command', required=True)
@@ -220,6 +259,9 @@ def parser():
     x = add('holdout', cmd_holdout, 'Lock fresh final dates, fetch their data, evaluate once, release an unused lock, or show status.')
     x.add_argument('action', choices=['lock', 'fetch', 'evaluate', 'release', 'show']); x.add_argument('key', help='Strategy key for lock/show; locked window ID for fetch/evaluate/release.')
     x.add_argument('--start'); x.add_argument('--end')
+    x = add('pine', cmd_pine, 'Check a Pine Script strategy, add it to the strategies, or list and show saved scripts.')
+    x.add_argument('action', choices=['check', 'add', 'list', 'show']); x.add_argument('target', nargs='?', help='A .pine file for check and add; a strategy key for show.')
+    x.add_argument('--name'); x.add_argument('--hypothesis'); x.add_argument('--parent'); x.add_argument('--json', action='store_true')
     return p
 
 

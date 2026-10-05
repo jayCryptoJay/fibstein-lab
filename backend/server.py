@@ -13,11 +13,12 @@ from .data import ROOT,inventory,download_archive,download_ccxt,import_csv,utc
 from .engine import run_backtest
 from .experiments import experiment
 from .verdict import read as read_verdict
-from . import registry,runcard,holdout
+from . import registry,runcard,holdout,pine
 
 STATE=ROOT/'workspace'; STATE.mkdir(exist_ok=True)
 RESULTS=STATE/'runs'; RESULTS.mkdir(exist_ok=True)
 DB=STATE/'lab.sqlite3'
+PINE=STATE/'pine'
 with sqlite3.connect(DB) as db:
     db.execute('CREATE TABLE IF NOT EXISTS presets (name TEXT PRIMARY KEY, config TEXT NOT NULL)')
     db.execute('CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, created TEXT NOT NULL, kind TEXT NOT NULL, config TEXT NOT NULL, metrics TEXT NOT NULL)')
@@ -217,6 +218,35 @@ def act(key:str,body:StrategyAction):
             return strategy_detail(db,key)
     except ValueError as e: raise HTTPException(400,str(e)) from e
 
+class PineScript(BaseModel):
+    source:str=Field(min_length=1,max_length=200_000)
+    name:str|None=Field(None,max_length=80)
+    hypothesis:str=Field('',max_length=2000)
+    parent:str|None=None
+
+@app.post('/api/pine/check')
+def pine_check(body:PineScript): return pine.check(body.source)
+
+@app.post('/api/pine')
+def pine_add(body:PineScript):
+    # A script's key carries a hash of its logic, so an edited script is a new strategy and its trials are counted apart.
+    try:
+        with registry.session(DB) as db:
+            if body.parent: registry.require(db,body.parent)
+        saved=pine.add(body.source,PINE,body.name,body.parent)
+        with registry.session(DB) as db:
+            if not registry.get(db,saved['key']): registry.add_strategy(db,saved['key'],saved['name'],body.hypothesis,body.parent,'pine')
+        return saved
+    except ValueError as e: raise HTTPException(400,str(e)) from e
+
+@app.get('/api/pine')
+def pine_list(): return pine.listing(PINE)
+
+@app.get('/api/pine/{key}')
+def pine_read(key:str):
+    try: return pine.read(PINE,key)
+    except ValueError as e: raise HTTPException(404,str(e)) from e
+
 class HoldoutRequest(BaseModel):
     strategy:str
     start:str
@@ -281,5 +311,7 @@ if (ROOT/'custom_strategies.py').exists():
     import importlib.util
     spec=importlib.util.spec_from_file_location('custom_strategies',ROOT/'custom_strategies.py')
     module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+
+pine.load_saved(PINE)
 
 if (ROOT/'static').exists(): app.mount('/',StaticFiles(directory=ROOT/'static',html=True),name='ui')

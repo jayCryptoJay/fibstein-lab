@@ -13,7 +13,7 @@ from .verdict import COSTS
 
 ROOT = Path(__file__).resolve().parents[1]
 DB = ROOT/'workspace'/'lab.sqlite3'
-ENGINE_FILES = ['engine.py', 'strategies.py', 'config.py', 'data.py', 'experiments.py']
+ENGINE_FILES = ['engine.py', 'strategies.py', 'config.py', 'data.py', 'experiments.py', 'pine.py']
 
 STATUSES = ['draft', 'candidate', 'promoted', 'archived']
 ORIGINS = ['python', 'pine', 'ai']

@@ -95,3 +95,15 @@ tr.selectable{cursor:pointer}tr.selectable:hover td{background:#111925}tr.select
  .facts li{grid-template-columns:64px minmax(0,1fr);gap:10px;padding:11px 12px;font-size:12px}
  .actions{padding:12px}.actions .field,.actions button{width:100%}
 }
+
+/* ---------- pine ---------- */
+textarea.code{font:400 12px/1.65 var(--data);tab-size:4;white-space:pre;overflow:auto;min-height:260px;background:#0b0f15;color:#dfe6f2;padding:14px 16px}
+.pine-actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.pine-added{flex:1;min-width:200px;margin:0;font-size:13px;color:#a9b8cd;align-self:center}
+.pine-added b{font-weight:500;color:#dfe6f2}.pine-added small{font-family:var(--data);margin-left:8px}
+.pine-note{margin-top:-10px!important}
+.idea b{font-weight:500;color:#dfe6f2}
+@media(max-width:740px){
+ textarea.code{font-size:11.5px;padding:12px;min-height:220px}
+ .pine-actions button,.pine-actions .button{flex:1}
+}

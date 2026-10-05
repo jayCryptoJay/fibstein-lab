@@ -30,11 +30,12 @@ backend/
   runcard.py       Turns a saved run into a JSON card, a Markdown digest and fixed-rule findings. Pure.
   registry.py      Research memory: strategies, studies, trials, gates, journal. Never deletes.
   causality.py     Look-ahead check for any registered strategy.
+  pine.py          Runs a pasted Pine Script v5/v6 strategy candle by candle and turns its orders into a plan.
   holdout.py       Final holdout: lock fresh dates, check data, consume one attempt, report pass or fail only.
   lab.py           Command line over the three above: python -m backend.lab --help
   server.py        HTTP API, job queue, run persistence.
 frontend/src/      React. Settings (left rail), Results (main), Views (data/compare/docs).
-tests/             183 tests. All must pass before any commit.
+tests/             247 tests. All must pass before any commit.
 presets/           Saved configurations, including the bundled sample.
 data/              Cached candles. NOT tracked in git. See "Data" below.
 ```
@@ -43,7 +44,7 @@ data/              Cached candles. NOT tracked in git. See "Data" below.
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests -q     # expect: 183 passed
+.venv/bin/python -m pytest tests -q     # expect: 247 passed
 .venv/bin/python launch.py              # serves the app
 ```
 
@@ -129,6 +130,15 @@ the existing `day()` helper) rather than committing a file.
 
 ## Known issues
 
+**A Pine script is refused, never bent to fit.** `pine.py` runs a script one
+completed candle at a time, so it cannot look ahead by construction, and it refuses
+with a line number whatever the engine cannot honour (resting entries, partial
+exits, another symbol, anything that reads the account). Do not turn a refusal into
+a quiet approximation. A new built-in function needs a test against an independent
+calculation in `tests/test_pine.py`. The interpreter is part of the engine
+fingerprint, and each saved script's key carries a hash of its logic, so an edited
+script is a new strategy whose trials are counted with its parent.
+
 **Engine results are pinned.** `tests/test_engine_golden.py` holds results recorded
 from the v1.0.0 engine for the three built-in strategies. Signal exits were added
 without moving them, and 27 real-data scenarios (5,105 trades) matched the old
@@ -166,7 +176,7 @@ These are additive, well-isolated, and hard to get catastrophically wrong:
   returned Series respects invariant 1. Prove it: `python -m backend.lab check <key>`.
   A strategy may return a plan frame instead, with its own exits, stops and targets
   (see `register_strategy`); the same check covers every column of it.
-  Pine conversions follow `docs/PINE-CONVERSION.md`.
+  Pine scripts are added in the Pine tab or with `python -m backend.lab pine add`; see `docs/PINE-CONVERSION.md`.
 - Tests. More of them, especially around cost accounting.
 - Anything under `docs/`.
 
@@ -175,6 +185,7 @@ These are additive, well-isolated, and hard to get catastrophically wrong:
 - `engine.py` — fill pricing, intrabar ordering, liquidation, sizing.
 - `data.py` — validation rules, caching, funding alignment.
 - `experiments.py` — fold boundaries, candidate selection.
+- `pine.py` — how a script is executed and how its position is modelled. A change here changes every saved script's results.
 - `requirements.txt` version pins.
 
 ## Style
@@ -184,7 +195,7 @@ match the file you are editing rather than reformatting it. Comments explain
 *why*, never *what* — the existing one-line comments above tricky blocks in
 `engine.py` are the model. No emoji in code, commits, or UI copy.
 
-Every change: run `pytest tests -q` and confirm 183 passing before you commit. If your
+Every change: run `pytest tests -q` and confirm 247 passing before you commit. If your
 environment cannot install the pinned dependencies, say so in the pull request and
 keep it draft until someone has run the full suite.
 

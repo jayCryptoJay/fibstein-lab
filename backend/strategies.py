@@ -62,7 +62,7 @@ def vwap_reversion(f,c):
 
 REGISTRY={'trend_pullback':trend_pullback,'breakout_retest':breakout_retest,'vwap_reversion':vwap_reversion}
 
-PLAN_FLAGS=['exit_long','exit_short','no_target','no_time_exit']
+PLAN_FLAGS=['exit_long','exit_short','no_target','no_time_exit','unfiltered']
 PLAN_PRICES=['stop_price','target_price','amend_stop','amend_target']
 
 def register_strategy(key,name,rule,function):
@@ -71,7 +71,8 @@ def register_strategy(key,name,rule,function):
     A plan frame has a `side` column of entries (-1, 0, 1) and any of these, all on the feature index:
     exit_long / exit_short (close that side at the next open), stop_price / target_price (levels for an
     entry on this bar), amend_stop / amend_target (new levels for the open position), no_target and
-    no_time_exit (this entry has no profit target / is not closed by the time limit).
+    no_time_exit (this entry has no profit target / is not closed by the time limit), and unfiltered
+    (this entry is not subject to the Settings higher-timeframe gate; the direction setting still applies).
     """
     if key in REGISTRY: raise ValueError('Strategy key already registered.')
     REGISTRY[key]=function; STRATEGIES[key]={'name':name,'rule':rule}
@@ -88,7 +89,9 @@ def prepare(raw,c):
         raise ValueError('Strategy must return an aligned Series containing only -1, 0, 1.')
     valid=f[['fast','slow','atr','rsi']].notna().all(axis=1)&(f.atr>0)
     side=side.where(valid,0)
-    side=side.where(~((side==1)&(~f.htf_long)),0).where(~((side==-1)&(~f.htf_short)),0)
+    # A strategy that carries its own trend logic (a converted Pine script) may opt out of the Settings gate.
+    gated=~plan['unfiltered'].fillna(False).astype(bool) if plan is not None and 'unfiltered' in plan else True
+    side=side.where(~((side==1)&(~f.htf_long)&gated),0).where(~((side==-1)&(~f.htf_short)&gated),0)
     if c.direction=='long': side=side.clip(lower=0)
     if c.direction=='short': side=side.clip(upper=0)
     f['side']=side
