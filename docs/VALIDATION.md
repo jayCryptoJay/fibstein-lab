@@ -30,6 +30,14 @@ Validated in Linux with Python 3.11 and 3.12 and local headless Chromium. Native
 
 End-to-end on real JTOUSDT data: a backtest, a six-candidate three-fold walk-forward, a cost stress and a strategy comparison were run through `python -m backend.lab run`; the registry counted 7 distinct trend-pullback trials across them, and the gates refused candidate status on a losing held-out result. In the browser at 1536 × 1024 and 390 × 844: the Library tab, recording an idea, adding a note, archiving, reopening, and the findings panel on backtest and walk-forward results. No console errors; document width matched the viewport.
 
+## Selection fixes (5 October 2026)
+
+Validated in Linux with Python 3.11 and 3.12 and local headless Chromium. Native Windows was not independently tested.
+
+115 tests pass. `experiments.py` changed, so the engine fingerprint changed and earlier held-out evidence is marked as produced by older code. A candidate is now eligible only with the minimum training trades and positive training net P&L and expectancy in R; eligible candidates are ranked by expectancy in R; a fold with no eligible candidate stays in cash.
+
+On real JTOUSDT data, 1 October 2024 to 1 February 2025, six candidates and three folds: every candidate lost in training on every fold, so all three held-out windows stayed in cash. Before this change the same run traded the least-bad candidate in each fold and lost 5.79%. The plain January 15 to February 1 backtest is unchanged at 53 trades and approximately −5.23%.
+
 ## Remaining limitations
 
 Candle-based fills cannot reproduce the order book, exact intrabar ordering or exchange latency. Liquidation calculations use disclosed approximations, including trade-price rather than historical mark-price data. Funding timestamps are aligned to execution boundaries. Exchange rules require user overrides when historical rules are unavailable. Starter strategies have not been established as profitable. See the README and in-app methodology before interpreting results.

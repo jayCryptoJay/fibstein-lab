@@ -25,7 +25,12 @@ DASH = '\u2014'
 
 
 def r(x, d=2):
-    return None if x is None else round(float(x), d)
+    return None if x is None else round(float(x), d) + 0.0   # + 0.0 turns the engine's -0.0 into 0.0.
+
+
+def cash_folds(result):
+    """Folds that traded nothing because no training candidate qualified."""
+    return sum(f.get('status') == 'no_trade' for f in result.get('folds') or [])
 
 
 def key_numbers(m):
@@ -86,7 +91,9 @@ def splits(result):
             winner = next((x for x in eligible if x['parameters'] == f['selected']), None)
             out.append({'name': f'fold {f["fold"]} training', 'held_out': False, 'start': f['train_start'], 'end': f['train_end'],
                         'selected': f['selected'], 'status': f.get('status', 'selected'), 'no_trade_reason': f.get('no_trade_reason'), 'candidates': len(ranking), 'eligible': len(eligible),
-                        'metrics': key_numbers(winner['metrics']) if winner else None})
+                        # A cash fold still shows how its best-ranked candidate did in training.
+                        'best_rejected': not winner and bool(ranking),
+                        'metrics': key_numbers((winner or ranking[0])['metrics']) if ranking else None})
             out.append({'name': f'fold {f["fold"]} test', 'held_out': True, 'start': f['test_start'], 'end': f['test_end'],
                         'selected': f['selected'], 'status': f.get('status', 'selected'), 'no_trade_reason': f.get('no_trade_reason'), 'metrics': key_numbers(f['test_metrics'])})
         out.append({'name': 'held-out total', 'held_out': True, 'start': result['folds'][0]['test_start'],
@@ -132,10 +139,14 @@ def findings(result):
                                ranking=[{'settings': x['settings'], **key_numbers(x['metrics'])} for x in ranked]))
         return out
 
-    skipped = [f['fold'] for f in result.get('folds', []) if f.get('selected') is None]
+    skipped = [f for f in result.get('folds', []) if f.get('selected') is None]
     if skipped:
-        out.append(finding('no_trade_folds', 'info',
-                           f'{len(skipped)} held-out folds stayed in cash because no training candidate qualified. All candidates remain counted.', folds=skipped))
+        # Profitable in training yet ineligible means the only thing missing was the trade minimum.
+        thin = [f['fold'] for f in skipped if any((x['metrics'].get('net_pnl') or 0) > 0 and (x['metrics'].get('expectancy_r') or 0) > 0 for x in f['training_ranking'])]
+        text = (f'{len(skipped)} held-out fold{"s" if len(skipped) != 1 else ""} stayed in cash because no training candidate qualified.'
+                + (f' In {len(thin)} of them a candidate was profitable in training but had too few trades.' if thin else '')
+                + ' All candidates remain counted.')
+        out.append(finding('no_trade_folds', 'info', text, folds=[f['fold'] for f in skipped], too_few_trades=thin))
     if n is None: return out
     if n == 0:
         return [finding('no_trades', 'problem', 'No trades were taken, so there is nothing to measure.'), *out]
@@ -256,7 +267,7 @@ def findings(result):
 def card(result, context=None, defaults=None):
     """Versioned JSON view of one run. `context` comes from the registry; without it those fields are None."""
     context = context or {}; c = result['config']; m = result.get('metrics') or None
-    verdict = result.get('verdict') or (read_verdict(m, out_of_sample=bool(result.get('folds')), folds=len(result.get('folds', [])) or None) if m else None)
+    verdict = result.get('verdict') or (read_verdict(m, out_of_sample=bool(result.get('folds')), folds=len(result.get('folds', [])) or None, cash_folds=cash_folds(result)) if m else None)
     notes = findings(result)
     if context.get('engine_current') is False:
         notes.append(finding('engine_changed', 'caution', 'The engine code has changed since this run; rerun it before comparing with newer results.'))
@@ -309,7 +320,7 @@ def digest(k):
         lines += ['## Key numbers', '| split | dates | held out | trades | net % | max DD % | exp R | PF |', '|---|---|---|---|---|---|---|---|']
         for x in k['splits']:
             q = x['metrics'] or {}
-            lines.append(f'| {x["name"]} | {x["start"]} → {x["end"]} | {"yes" if x["held_out"] else "no"} | {q.get("trades", "—")} | '
+            lines.append(f'| {x["name"]}{" (best rejected)" if x.get("best_rejected") else ""} | {x["start"]} → {x["end"]} | {"yes" if x["held_out"] else "no"} | {q.get("trades", "—")} | '
                          f'{num(q.get("net_return_pct"))} | {num(q.get("max_drawdown_pct"))} | {num(q.get("expectancy_r"), 3)} | {num(q.get("profit_factor"), 2)} |')
         lines.append('')
     if k['rows']:

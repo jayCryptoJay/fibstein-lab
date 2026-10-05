@@ -48,7 +48,7 @@ def persist_result(result,kind):
     if result.get('metrics'):
         held_out=kind in ('walkforward','grid')
         result['verdict']=read_verdict(result['metrics'],out_of_sample=held_out,
-                                       folds=len(result.get('folds',[])) or None)
+                                       folds=len(result.get('folds',[])) or None,cash_folds=runcard.cash_folds(result))
     result['engine_sha256']=registry.engine_fingerprint(ROOT)
     with gzip.open(RESULTS/f'{rid}.json.gz','wt') as f: json.dump(result,f,allow_nan=False)
     # One transaction: a run is never saved without also being counted as a study and its trials.
