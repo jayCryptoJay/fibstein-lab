@@ -197,6 +197,15 @@ These are additive, well-isolated, and hard to get catastrophically wrong:
 - `pine.py` — how a script is executed and how its position is modelled. A change here changes every saved script's results.
 - `requirements.txt` version pins.
 
+## Working with more than one AI
+
+Claude and ChatGPT (Codex) both work here, and GitHub pull requests are the only
+link between them. Branch as `claude/<topic>` or `codex/<topic>`, open a draft
+pull request as soon as you start so the work is visibly taken, never merge your
+own pull request or push to `main` unless Jay says so, and review the other's
+work by rerunning it, not by trusting its numbers. The full routine, the pull
+request template and the phrases Jay uses are in `docs/WORKING-WITH-AIS.md`.
+
 ## Style
 
 Dense but readable. Existing code favours compact expressions and short names;
