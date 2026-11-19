@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#090c12" />
+    <title>FibStein | Order Flow</title>
+    <link rel="icon" href="./mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand"><img src="./mark.svg" alt="" /><b>FibStein</b><span>Research</span></div>
+      <div class="section-title">Order flow</div>
+      <div class="header-end">
+        <span id="status" role="status" class="status">Connecting</span
+        ><button id="settings" aria-label="Chart settings" title="Chart settings">Settings</button>
+      </div>
+    </header>
+    <main>
+      <section class="instrument">
+        <div class="pair">
+          <label for="symbol">Perpetual futures</label
+          ><select id="symbol" aria-label="Market"></select>
+        </div>
+        <div class="quote"><strong id="price">—</strong><small>USDT</small></div>
+        <div class="stat"><small>Best bid</small><b class="buy" id="bid">—</b></div>
+        <div class="stat"><small>Best ask</small><b class="sell" id="ask">—</b></div>
+        <div class="stat extra"><small>Open interest</small><b id="open-interest">—</b></div>
+        <div class="stat extra"><small>Funding rate</small><b id="funding">—</b></div>
+        <select id="venue" aria-label="Exchange"></select>
+      </section>
+      <div class="workbench">
+        <section class="panel chartpanel">
+          <div class="panel-head">
+            <div class="title">
+              <i></i>
+              <h1>Price & liquidity</h1>
+            </div>
+            <div id="frames" class="group"></div>
+          </div>
+          <div class="toolbar">
+            <div class="group modes">
+              <button data-mode="candles" aria-pressed="true">Candles</button
+              ><button data-mode="footprint">Footprint</button>
+            </div>
+            <select id="style" aria-label="Price chart style">
+              <option value="candles">Standard</option>
+              <option value="heikin">Heikin-Ashi</option>
+              <option value="line">Line</option>
+              <option value="area">Area</option></select
+            ><button id="layers" aria-haspopup="dialog">Layers</button
+            ><button id="draw" aria-haspopup="dialog">Draw</button><button id="replay">Replay</button
+            ><button id="fit" class="right">Fit</button>
+          </div>
+          <div id="chart-area">
+            <canvas id="chart" aria-label="Interactive price and order-flow chart"></canvas>
+            <div id="legend"></div>
+            <div id="empty" role="status">Connecting to the market…</div>
+            <div id="tooltip" hidden></div>
+          </div>
+          <div id="replay-tools" hidden>
+            <button id="play">Play</button
+            ><input id="replay-range" aria-label="Replay candle" type="range" /><button id="step">Step</button
+            ><button id="exit-replay">Exit replay</button>
+          </div>
+          <div class="chart-foot">
+            <span id="context">Waiting for candles</span><span id="tool-state"></span>
+            <div class="zoom">
+              <button id="minus" aria-label="Zoom out">−</button
+              ><button id="plus" aria-label="Zoom in">+</button>
+            </div>
+          </div>
+        </section>
+        <aside class="panel side">
+          <div class="panel-head tabs">
+            <button data-tab="book" aria-pressed="true">Order book</button
+            ><button data-tab="tape">Trades</button><button data-tab="flow">Flow</button>
+          </div>
+          <div id="side-content"></div>
+        </aside>
+      </div>
+    </main>
+    <footer><span id="foot-venue">Public market data</span><span id="clock">UTC</span></footer>
+    <dialog id="dialog">
+      <div class="dialog-head">
+        <h2 id="dialog-title"></h2>
+        <button id="close" aria-label="Close panel">×</button>
+      </div>
+      <div id="dialog-content"></div>
+    </dialog>
+    <script type="module" src="./app.mjs"></script>
+  </body>
+</html>

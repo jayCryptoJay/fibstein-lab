@@ -2,6 +2,10 @@
 
 A free, local USDT perpetual-futures research app with a React dashboard and an inspectable Python execution engine. This is a backtester, not a live trading bot. Starter strategies are research templates, not proven profitable systems.
 
+## Live order flow
+
+Open [FibStein Order Flow](https://fibstein-orderflow.vercel.app/) for SUPER/USDT perpetual candles, market depth, trade footprints and chart replay. It runs in the browser. The [site source and usage notes](orderflow/README.md) describe the feeds and coverage.
+
 ## Install without Python
 
 Download the archive for your system from the project's **Releases** page, unpack it, open the `FibStein Lab` folder and start `FibStein Lab`. The app opens in your browser. Nothing else needs installing, and the January 2025 sample candles are included.
